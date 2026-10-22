@@ -1,0 +1,6 @@
+{
+  "name": "BJ Bright Enterprises CRM",
+  "description": "Executive recruiting and candidate directory platform with pipeline tracking, WhatsApp messaging, and interview scheduling for BJ Bright Enterprises.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

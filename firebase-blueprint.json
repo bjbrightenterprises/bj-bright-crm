@@ -1,0 +1,306 @@
+{
+  "entities": {
+    "Candidate": {
+      "title": "Candidate",
+      "description": "Job applicant and candidate record",
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "city": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "currentCompany": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "currentSalaryLPA": {
+          "type": "number"
+        },
+        "expectedSalaryLPA": {
+          "type": "number"
+        },
+        "experienceYears": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "assignedRecruiterId": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "fullName",
+        "phone",
+        "email",
+        "status"
+      ]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Corporate client company",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "industry": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "city": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "commissionPercent": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 20
+        }
+      },
+      "required": [
+        "name",
+        "industry",
+        "status"
+      ]
+    },
+    "JobOpening": {
+      "title": "JobOpening",
+      "description": "Client job vacancy",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "clientId": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "priority": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 20
+        }
+      },
+      "required": [
+        "title",
+        "clientId",
+        "status"
+      ]
+    },
+    "PipelineItem": {
+      "title": "PipelineItem",
+      "description": "Kanban recruitment stage entry",
+      "type": "object",
+      "properties": {
+        "candidateId": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "jobId": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "stage": {
+          "type": "string",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "candidateId",
+        "jobId",
+        "stage"
+      ]
+    },
+    "Interview": {
+      "title": "Interview",
+      "description": "Scheduled candidate interview or follow-up",
+      "type": "object",
+      "properties": {
+        "candidateId": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "dateTime": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "mode": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 30
+        }
+      },
+      "required": [
+        "candidateId",
+        "dateTime",
+        "mode",
+        "status"
+      ]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Audit event log entry",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "action": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "module": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "timestamp": {
+          "type": "string",
+          "maxLength": 50
+        }
+      },
+      "required": [
+        "userId",
+        "action",
+        "module",
+        "timestamp"
+      ]
+    },
+    "User": {
+      "title": "User",
+      "description": "CRM team member",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "maxLength": 30
+        }
+      },
+      "required": [
+        "name",
+        "email",
+        "role"
+      ]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "Task / reminder assigned to a team member",
+      "type": "object",
+      "properties": {
+        "assignedToUserId": {
+          "type": "string"
+        },
+        "assignedByUserId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Company profile and dropdown lists (single doc: company)",
+      "type": "object",
+      "properties": {
+        "companyName": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/candidates/{candidateId}": {
+      "schema": "Candidate",
+      "description": "Collection of candidate records and resumes"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Corporate client companies"
+    },
+    "/jobs/{jobId}": {
+      "schema": "JobOpening",
+      "description": "Job openings created for clients"
+    },
+    "/pipeline/{pipelineId}": {
+      "schema": "PipelineItem",
+      "description": "Candidate pipeline tracking across stages"
+    },
+    "/interviews/{interviewId}": {
+      "schema": "Interview",
+      "description": "Interviews and follow-ups"
+    },
+    "/activities/{activityId}": {
+      "schema": "ActivityLog",
+      "description": "Audit trail log"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "CRM users and roles"
+    },
+    "/reminders/{id}": {
+      "schema": "Reminder",
+      "description": "Tasks and reminders"
+    },
+    "/editHistories/{id}": {
+      "schema": "ActivityLog",
+      "description": "Edit history audit trail"
+    },
+    "/exportLogs/{id}": {
+      "schema": "ActivityLog",
+      "description": "Excel export audit log"
+    },
+    "/importLogs/{id}": {
+      "schema": "ActivityLog",
+      "description": "Excel import audit log"
+    },
+    "/settings/{id}": {
+      "schema": "Settings",
+      "description": "Company settings (doc: company)"
+    }
+  }
+}

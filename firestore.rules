@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profilePath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    // logged in AND has a profile in /users AND not disabled by Admin
+    function isActive() {
+      return signedIn() && exists(profilePath()) && get(profilePath()).data.active == true;
+    }
+
+    function isAdmin() {
+      return isActive() && get(profilePath()).data.role == 'admin';
+    }
+
+    // ---------- users ----------
+    match /users/{userId} {
+      // everyone can read their own profile (needed at login); active users can read the team list
+      allow read: if signedIn() && (request.auth.uid == userId || isActive());
+
+      // first login of the owner creates the admin profile; afterwards only Admin manages users
+      allow create: if isAdmin() || (
+        signedIn()
+        && request.auth.uid == userId
+        && request.auth.token.email == 'praveenverma1420@gmail.com'
+        && request.resource.data.role == 'admin'
+        && request.resource.data.active == true
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // ---------- company settings (one doc: settings/company) ----------
+    match /settings/{docId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    // ---------- main records ----------
+    // Which record each recruiter sees / may change is enforced in the app UI by role.
+    // The rules guarantee: must be logged in, must be an active user, only Admin hard-deletes.
+    match /candidates/{id} {
+      allow read, create, update: if isActive();
+      allow delete: if isAdmin();
+    }
+
+    match /clients/{id} {
+      allow read, create, update: if isActive();
+      allow delete: if isAdmin();
+    }
+
+    match /jobs/{id} {
+      allow read, create, update: if isActive();
+      allow delete: if isAdmin();
+    }
+
+    match /pipeline/{id} {
+      allow read, create, update, delete: if isActive();
+    }
+
+    match /interviews/{id} {
+      allow read, create, update, delete: if isActive();
+    }
+
+    match /reminders/{id} {
+      allow read, create, update, delete: if isActive();
+    }
+
+    // ---------- audit trails: append-only ----------
+    match /activities/{id} {
+      allow read, create: if isActive();
+      allow update, delete: if isAdmin();
+    }
+
+    match /editHistories/{id} {
+      allow read, create: if isActive();
+      allow update, delete: if isAdmin();
+    }
+
+    match /exportLogs/{id} {
+      allow read, create: if isActive();
+      allow update, delete: if isAdmin();
+    }
+
+    match /importLogs/{id} {
+      allow read, create: if isActive();
+      allow update, delete: if isAdmin();
+    }
+
+    // connection test used by Settings > Firebase > Test
+    match /_connection_test/{id} {
+      allow read: if signedIn();
+    }
+
+    // everything else is denied by default
+  }
+}
