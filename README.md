@@ -31,3 +31,4 @@ View your app in AI Studio: https://ai.studio/apps/495d7465-aa9e-44c9-89c0-5b6eb
 7. Optional: Settings > Firebase > "Upload data saved in this browser" to move old local data to the cloud.
 
 If the Firebase config is empty the app keeps working in offline (browser-only) mode.
+Updated
