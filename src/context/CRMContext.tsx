@@ -16,6 +16,7 @@ import {
   EditHistoryItem,
   ExportLogItem,
   ImportLogItem,
+  CandidateRemark,
 } from '../types/crm';
 import {
   INITIAL_USERS,
@@ -30,30 +31,16 @@ import {
 } from '../lib/mockData';
 import {
   getSavedFirebaseConfig,
-  getActiveFirebaseConfig,
   saveFirebaseConfig,
   clearFirebaseConfig,
   initializeFirebaseServices,
-  getFirebaseAuth,
-  getFirebaseDb,
-  withSecondaryAuth,
-  friendlyFirebaseError,
   FirebaseConfigOptions,
 } from '../lib/firebase';
-import { FIRST_ADMIN_EMAIL } from '../lib/firebaseConfig';
-import { useCollectionSync } from '../lib/firestoreSync';
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail,
-  createUserWithEmailAndPassword,
-} from 'firebase/auth';
-import { doc, getDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 
 interface CRMContextType {
   currentUser: User;
   switchUser: (userId: string) => void;
+  changeMyPassword: (newPassword: string) => void;
   users: User[];
   isDarkMode: boolean;
   toggleDarkMode: () => void;
@@ -77,11 +64,19 @@ interface CRMContextType {
   deleteCandidate: (id: string) => void; // Soft delete to trash (Admin only)
   restoreCandidate: (id: string) => void;
   addCandidateNote: (candidateId: string, text: string) => void;
+  addCandidateRemark: (candidateId: string, text: string, statusChangedTo?: CandidateStatus) => void;
+  deleteCandidateRemark: (candidateId: string, remarkId: string) => void;
+  activeStatusRemarkModal: { candidate: Candidate; newStatus?: CandidateStatus; isStatusChange: boolean; bulkCandidateIds?: string[] } | null;
+  openStatusRemarkModal: (candidate: Candidate, newStatus: CandidateStatus) => void;
+  openBulkStatusRemarkModal: (candidateIds: string[], newStatus: CandidateStatus) => void;
+  openAddRemarkModal: (candidate: Candidate) => void;
+  closeStatusRemarkModal: () => void;
+  submitStatusRemark: (text: string) => void;
   bulkImportCandidates: (newCandidates: Partial<Candidate>[]) => number;
   checkDuplicate: (phone: string, email: string, currentId?: string) => Candidate | undefined;
 
   // Bulk candidate actions
-  bulkUpdateCandidateStatus: (candidateIds: string[], newStatus: CandidateStatus, remark?: string) => void;
+  bulkUpdateCandidateStatus: (candidateIds: string[], newStatus: CandidateStatus) => void;
   bulkAssignRecruiter: (candidateIds: string[], recruiterId: string, recruiterName: string) => void;
   bulkDeleteCandidates: (candidateIds: string[]) => void;
 
@@ -125,7 +120,7 @@ interface CRMContextType {
   // Pipeline
   pipeline: PipelineItem[];
   visiblePipeline: PipelineItem[];
-  movePipelineStage: (id: string, newStage: PipelineStage, remark?: string) => void;
+  movePipelineStage: (id: string, newStage: PipelineStage) => void;
   addPipelineCandidate: (candidateId: string, jobId: string, stage?: PipelineStage) => void;
 
   // Interviews
@@ -170,18 +165,6 @@ interface CRMContextType {
   setReassignmentTargetUser: (val: { user: User; type: 'disable' | 'delete' } | null) => void;
   reassignAndResolveUser: (oldUserId: string, newUserId: string, actionType: 'disable' | 'delete') => void;
 
-  // Firebase auth + sync
-  firebaseAuthActive: boolean; // true when Firebase is configured (real login + cloud sync)
-  authReady: boolean;
-  isAuthenticated: boolean;
-  authError: string;
-  syncReady: boolean;
-  syncError: string;
-  dismissSyncError: () => void;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  sendPasswordSetupEmail: (email: string) => Promise<void>;
-
   // Firebase
   isFirebaseConfigured: boolean;
   firebaseConfig: FirebaseConfigOptions | null;
@@ -220,6 +203,44 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [globalSearch, setGlobalSearch] = useState('');
 
+  // One-time cleanup of legacy demo seed records from localStorage while keeping real organization records
+  useState(() => {
+    try {
+      if (localStorage.getItem('bj_prod_clean_v1') !== 'true') {
+        const demoUserIds = new Set(['usr_mgr_anjali', 'usr_rec_vikas', 'usr_hr_pooja']);
+        const demoClientIds = new Set(['cli_tcs', 'cli_paytm', 'cli_hcl', 'cli_infoedge', 'cli_pinelabs', 'cli_jubilant']);
+        const isDemoId = (id: string, prefixes: string[]) =>
+          prefixes.some((p) => new RegExp(`^${p}\\d+$`).test(id));
+
+        const filterList = <T extends { id: string }>(key: string, fn: (item: T) => boolean) => {
+          const raw = localStorage.getItem(key);
+          if (!raw) return;
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            localStorage.setItem(key, JSON.stringify(parsed.filter(fn)));
+          }
+        };
+
+        filterList<User>('bj_users', (u) => !demoUserIds.has(u.id));
+        filterList<Client>('bj_clients', (c) => !demoClientIds.has(c.id));
+        filterList<JobOpening>('bj_jobs', (j) => !isDemoId(j.id, ['job_']));
+        filterList<Candidate>('bj_candidates', (c) => !isDemoId(c.id, ['cand_']));
+        filterList<PipelineItem>('bj_pipeline', (p) => !isDemoId(p.id, ['pipe_']));
+        filterList<Interview>('bj_interviews', (i) => !isDemoId(i.id, ['int_']));
+        filterList<ReminderTask>('bj_reminders', (r) => !isDemoId(r.id, ['rem_']));
+        filterList<ActivityLogItem>('bj_activities', (a) => !isDemoId(a.id, ['act_']));
+
+        const curId = localStorage.getItem('bj_current_user_id');
+        if (curId && demoUserIds.has(curId)) {
+          localStorage.setItem('bj_current_user_id', 'usr_admin');
+        }
+        localStorage.setItem('bj_prod_clean_v1', 'true');
+      }
+    } catch {
+      // Ignore storage migration errors
+    }
+  });
+
   const loadStored = <T,>(key: string, fallback: T): T => {
     try {
       const item = localStorage.getItem(key);
@@ -229,7 +250,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const [users, setUsers] = useState<User[]>(() => loadStored('bj_users', INITIAL_USERS));
+  const [users, setUsers] = useState<User[]>(() => {
+    const stored = loadStored('bj_users', INITIAL_USERS);
+    return stored.length > 0 ? stored : INITIAL_USERS;
+  });
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
     return localStorage.getItem('bj_current_user_id') || 'usr_admin';
   });
@@ -237,7 +261,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const currentUser = useMemo(() => {
     const found = users.find((u) => u.id === currentUserId);
     if (found && !found.active) {
-      // If current user is disabled, fallback to admin or first active user
       const activeUser = users.find((u) => u.active) || users[0];
       return activeUser;
     }
@@ -245,10 +268,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [users, currentUserId]);
 
   const switchUser = (userId: string) => {
-    if (getFirebaseAuth() && getActiveFirebaseConfig()) return; // real login: role switching is for offline demo only
     const target = users.find((u) => u.id === userId);
     if (target && !target.active) {
-      alert('This user account is disabled by Admin.');
       return;
     }
     setCurrentUserId(userId);
@@ -256,10 +277,17 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (target) {
       logActivity(
         'system',
-        'User Switched',
-        `Switched active role to ${target.name} (${target.role.toUpperCase()})`
+        'User Signed In',
+        `Signed in as ${target.name} (${target.role.toUpperCase()})`
       );
     }
+  };
+
+  const changeMyPassword = (newPassword: string) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === currentUser.id ? { ...u, password: newPassword } : u))
+    );
+    logActivity('system', 'Password Updated', `${currentUser.name} updated their account password`);
   };
 
   const [candidates, setCandidates] = useState<Candidate[]>(() =>
@@ -299,240 +327,53 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Firebase state
   const [firebaseConfig, setFirebaseConfig] = useState<FirebaseConfigOptions | null>(() =>
-    getActiveFirebaseConfig()
+    getSavedFirebaseConfig()
   );
   const [isFirebaseConfigured, setIsFirebaseConfigured] = useState<boolean>(() => {
     const s = initializeFirebaseServices();
     return s.isConfigured;
   });
 
-  // Firebase Auth state
-  const [authReady, setAuthReady] = useState<boolean>(() => !isFirebaseConfigured);
-  const [fbUid, setFbUid] = useState<string | null>(null);
-  const [profileReady, setProfileReady] = useState(false);
-  const [authError, setAuthError] = useState('');
-  const [syncError, setSyncError] = useState('');
-
-  useEffect(() => {
-    if (!isFirebaseConfigured) return;
-    const auth = getFirebaseAuth();
-    const db = getFirebaseDb();
-    if (!auth || !db) return;
-
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
-      if (!fbUser) {
-        setFbUid(null);
-        setProfileReady(false);
-        setAuthReady(true);
-        return;
-      }
-      try {
-        const ref = doc(db, 'users', fbUser.uid);
-        const snap = await getDoc(ref);
-        const email = (fbUser.email || '').toLowerCase();
-        let profile: User;
-
-        if (!snap.exists()) {
-          if (email === FIRST_ADMIN_EMAIL.toLowerCase()) {
-            // first ever login of the owner: create the admin profile
-            profile = {
-              id: fbUser.uid,
-              name: fbUser.displayName || 'Admin',
-              email,
-              role: 'admin',
-              phone: '',
-              avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-              designation: 'Admin',
-              active: true,
-            };
-            await setDoc(ref, profile);
-          } else {
-            await signOut(auth);
-            setAuthError('Access denied. Only users added by Admin can log in.');
-            setAuthReady(true);
-            return;
-          }
-        } else {
-          profile = { ...(snap.data() as User), id: fbUser.uid };
-        }
-
-        if (!profile.active) {
-          await signOut(auth);
-          setAuthError('Your account has been disabled by Admin. Please contact administrator.');
-          setAuthReady(true);
-          return;
-        }
-
-        setAuthError('');
-        setUsers([profile]);
-        setCurrentUserId(fbUser.uid);
-        setFbUid(fbUser.uid);
-        setProfileReady(true);
-      } catch (e) {
-        setAuthError(friendlyFirebaseError(e));
-        try {
-          await signOut(auth);
-        } catch {
-          /* ignore */
-        }
-      } finally {
-        setAuthReady(true);
-      }
-    });
-    return () => unsub();
-  }, [isFirebaseConfigured]);
-
-  const syncEnabled = isFirebaseConfigured && profileReady;
-  const onSyncError = (msg: string) => setSyncError(msg);
-  const isAdminUser = currentUser.role === 'admin';
-
-  const usersSync = useCollectionSync<User>({
-    name: 'users', items: users, setItems: setUsers, enabled: syncEnabled,
-    allowDelete: isAdminUser, allowWrite: isAdminUser, exclude: ['password'], onError: onSyncError,
-  });
-  const candidatesSync = useCollectionSync<Candidate>({
-    name: 'candidates', items: candidates, setItems: setCandidates, enabled: syncEnabled, allowDelete: isAdminUser, onError: onSyncError,
-  });
-  const clientsSync = useCollectionSync<Client>({
-    name: 'clients', items: clients, setItems: setClients, enabled: syncEnabled, allowDelete: isAdminUser, onError: onSyncError,
-  });
-  const jobsSync = useCollectionSync<JobOpening>({
-    name: 'jobs', items: jobs, setItems: setJobs, enabled: syncEnabled, allowDelete: isAdminUser, onError: onSyncError,
-  });
-  const pipelineSync = useCollectionSync<PipelineItem>({
-    name: 'pipeline', items: pipeline, setItems: setPipeline, enabled: syncEnabled, allowDelete: true, onError: onSyncError,
-  });
-  const interviewsSync = useCollectionSync<Interview>({
-    name: 'interviews', items: interviews, setItems: setInterviews, enabled: syncEnabled, allowDelete: true, onError: onSyncError,
-  });
-  const remindersSync = useCollectionSync<ReminderTask>({
-    name: 'reminders', items: reminders, setItems: setReminders, enabled: syncEnabled, allowDelete: true, onError: onSyncError,
-  });
-  const activitiesSync = useCollectionSync<ActivityLogItem>({
-    name: 'activities', items: activities, setItems: setActivities, enabled: syncEnabled,
-    constraints: [orderBy('timestamp', 'desc'), limit(500)], onError: onSyncError,
-  });
-  const editHistoriesSync = useCollectionSync<EditHistoryItem>({
-    name: 'editHistories', items: editHistories, setItems: setEditHistories, enabled: syncEnabled,
-    constraints: [orderBy('timestamp', 'desc'), limit(1000)], onError: onSyncError,
-  });
-  const exportLogsSync = useCollectionSync<ExportLogItem>({
-    name: 'exportLogs', items: exportLogs, setItems: setExportLogs, enabled: syncEnabled,
-    constraints: [orderBy('timestamp', 'desc'), limit(500)], onError: onSyncError,
-  });
-  const importLogsSync = useCollectionSync<ImportLogItem>({
-    name: 'importLogs', items: importLogs, setItems: setImportLogs, enabled: syncEnabled,
-    constraints: [orderBy('timestamp', 'desc'), limit(500)], onError: onSyncError,
-  });
-
-  // company settings live in a single document: settings/company
-  const settingsItems = useMemo(() => [{ ...companySettings, id: 'company' }], [companySettings]);
-  const settingsSync = useCollectionSync<CompanySettings & { id: string }>({
-    name: 'settings',
-    items: settingsItems,
-    setItems: (list) => {
-      const c = list.find((i) => i.id === 'company');
-      if (c) {
-        const { id: _id, ...rest } = c;
-        setCompanySettings(rest as CompanySettings);
-      }
-    },
-    enabled: syncEnabled,
-    allowWrite: isAdminUser,
-    onError: onSyncError,
-  });
-
-  const syncReady =
-    syncEnabled &&
-    usersSync.loaded && candidatesSync.loaded && clientsSync.loaded && jobsSync.loaded &&
-    pipelineSync.loaded && interviewsSync.loaded && remindersSync.loaded && activitiesSync.loaded &&
-    editHistoriesSync.loaded && exportLogsSync.loaded && importLogsSync.loaded && settingsSync.loaded;
-
-  // if the admin disables / deletes the logged-in user, sign them out
-  useEffect(() => {
-    if (!syncReady || !fbUid) return;
-    const me = users.find((u) => u.id === fbUid);
-    if (!me || !me.active) {
-      const auth = getFirebaseAuth();
-      if (auth) signOut(auth).finally(() => window.location.reload());
-    }
-  }, [syncReady, fbUid, users]);
-
-  const login = async (email: string, password: string) => {
-    const auth = getFirebaseAuth();
-    if (!auth) throw new Error('Firebase is not configured.');
-    setAuthError('');
-    await signInWithEmailAndPassword(auth, email.trim(), password);
-  };
-
-  const logout = async () => {
-    const auth = getFirebaseAuth();
-    try {
-      if (auth) await signOut(auth);
-    } finally {
-      localStorage.removeItem('bj_logged_in');
-      window.location.reload(); // clears all in-memory company data
-    }
-  };
-
-  const sendPasswordSetupEmail = async (email: string) => {
-    const auth = getFirebaseAuth();
-    if (!auth) throw new Error('Firebase is not configured.');
-    await sendPasswordResetEmail(auth, email.trim());
-  };
-
   const [viewAllToggle, setViewAllToggle] = useState<boolean>(false);
 
   // Save to localStorage
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_users', JSON.stringify(users));
   }, [users]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_candidates', JSON.stringify(candidates));
   }, [candidates]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_clients', JSON.stringify(clients));
   }, [clients]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_jobs', JSON.stringify(jobs));
   }, [jobs]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_pipeline', JSON.stringify(pipeline));
   }, [pipeline]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_interviews', JSON.stringify(interviews));
   }, [interviews]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_activities', JSON.stringify(activities));
   }, [activities]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_settings', JSON.stringify(companySettings));
   }, [companySettings]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_reminders', JSON.stringify(reminders));
   }, [reminders]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_edit_histories', JSON.stringify(editHistories));
   }, [editHistories]);
   useEffect(() => {
     localStorage.setItem('bj_read_notifs', JSON.stringify(readNotifIds));
   }, [readNotifIds]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_export_logs', JSON.stringify(exportLogs));
   }, [exportLogs]);
   useEffect(() => {
-    if (isFirebaseConfigured) return; // cloud mode: data lives in Firestore, not in the browser
     localStorage.setItem('bj_import_logs', JSON.stringify(importLogs));
   }, [importLogs]);
 
@@ -761,37 +602,138 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity('candidate', 'Note Added', `Added note on candidate profile`);
   };
 
-  const bulkUpdateCandidateStatus = (candidateIds: string[], newStatus: CandidateStatus, remark?: string) => {
-    const idSet = new Set(candidateIds);
-    const nowIso = new Date().toISOString();
+  const [activeStatusRemarkModal, setActiveStatusRemarkModal] = useState<{
+    candidate: Candidate;
+    newStatus?: CandidateStatus;
+    isStatusChange: boolean;
+    bulkCandidateIds?: string[];
+  } | null>(null);
+
+  const openStatusRemarkModal = (candidate: Candidate, newStatus: CandidateStatus) => {
+    if (candidate.status === newStatus) return;
+    setActiveStatusRemarkModal({
+      candidate,
+      newStatus,
+      isStatusChange: true,
+    });
+  };
+
+  const openBulkStatusRemarkModal = (candidateIds: string[], newStatus: CandidateStatus) => {
+    const firstCand = candidates.find((c) => candidateIds.includes(c.id));
+    if (!firstCand) return;
+    setActiveStatusRemarkModal({
+      candidate: {
+        ...firstCand,
+        fullName: candidateIds.length > 1 ? `${candidateIds.length} Selected Candidates` : firstCand.fullName,
+      },
+      newStatus,
+      isStatusChange: true,
+      bulkCandidateIds: candidateIds,
+    });
+  };
+
+  const openAddRemarkModal = (candidate: Candidate) => {
+    setActiveStatusRemarkModal({
+      candidate,
+      isStatusChange: false,
+    });
+  };
+
+  const closeStatusRemarkModal = () => {
+    setActiveStatusRemarkModal(null);
+  };
+
+  const addCandidateRemark = (candidateId: string, text: string, statusChangedTo?: CandidateStatus) => {
+    const remark: CandidateRemark = {
+      id: `remk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      candidateId,
+      statusChangedTo,
+      text: text.trim() || (statusChangedTo ? `Status changed to ${statusChangedTo}` : 'General remark'),
+      authorUserId: currentUser.id,
+      authorName: currentUser.name,
+      authorRole: currentUser.role,
+      createdAt: new Date().toISOString(),
+    };
+
     setCandidates((prev) =>
       prev.map((c) => {
-        if (!idSet.has(c.id)) return c;
-        const oldStatus = c.status;
-        const changes = [
-          { field: 'status', oldValue: oldStatus, newValue: newStatus },
-          ...(remark ? [{ field: 'statusRemark', oldValue: c.statusRemark || '', newValue: remark }] : []),
-        ];
-        addEditHistory(c.id, 'candidate', `Bulk status changed to ${newStatus}${remark ? `: ${remark}` : ''}`, changes);
-        return {
-          ...c,
-          status: newStatus,
-          ...(remark
-            ? {
-                statusRemark: remark,
-                statusRemarkAt: nowIso,
-                statusRemarkBy: currentUser.name,
-              }
-            : {}),
-          updatedAt: nowIso,
-        };
+        if (c.id === candidateId) {
+          const existingRemarks = c.remarks || [];
+          return {
+            ...c,
+            ...(statusChangedTo ? { status: statusChangedTo } : {}),
+            remarks: [remark, ...existingRemarks],
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return c;
       })
     );
     logActivity(
       'candidate',
-      'Bulk Status Update',
-      `Updated ${candidateIds.length} candidates to status: ${newStatus}${remark ? ` (Remark: ${remark})` : ''}`
+      statusChangedTo ? 'Status Changed & Remark Logged' : 'Remark Logged',
+      `Remark added for candidate${statusChangedTo ? ` (Status: ${statusChangedTo})` : ''}`
     );
+  };
+
+  const deleteCandidateRemark = (candidateId: string, remarkId: string) => {
+    if (currentUser.role !== 'admin') return;
+    setCandidates((prev) =>
+      prev.map((c) => {
+        if (c.id === candidateId && c.remarks) {
+          return {
+            ...c,
+            remarks: c.remarks.filter((r) => r.id !== remarkId),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return c;
+      })
+    );
+    logActivity('candidate', 'Remark Deleted', `Deleted remark ID ${remarkId} for candidate ${candidateId}`);
+  };
+
+  const submitStatusRemark = (text: string) => {
+    if (!activeStatusRemarkModal) return;
+    const { candidate, newStatus, isStatusChange, bulkCandidateIds } = activeStatusRemarkModal;
+
+    if (bulkCandidateIds && bulkCandidateIds.length > 0 && newStatus) {
+      const idSet = new Set(bulkCandidateIds);
+      const nowIso = new Date().toISOString();
+      setCandidates((prev) =>
+        prev.map((c) => {
+          if (idSet.has(c.id)) {
+            const rem: CandidateRemark = {
+              id: `remk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              candidateId: c.id,
+              statusChangedTo: newStatus,
+              text: text.trim() || `Bulk status updated to ${newStatus}`,
+              authorUserId: currentUser.id,
+              authorName: currentUser.name,
+              authorRole: currentUser.role,
+              createdAt: nowIso,
+            };
+            return {
+              ...c,
+              status: newStatus,
+              remarks: [rem, ...(c.remarks || [])],
+              updatedAt: nowIso,
+            };
+          }
+          return c;
+        })
+      );
+      logActivity('candidate', 'Bulk Status Update & Remarks', `Updated ${bulkCandidateIds.length} candidates to ${newStatus}`);
+    } else if (isStatusChange && newStatus) {
+      addCandidateRemark(candidate.id, text, newStatus);
+    } else {
+      addCandidateRemark(candidate.id, text);
+    }
+    setActiveStatusRemarkModal(null);
+  };
+
+  const bulkUpdateCandidateStatus = (candidateIds: string[], newStatus: CandidateStatus) => {
+    openBulkStatusRemarkModal(candidateIds, newStatus);
   };
 
   const bulkAssignRecruiter = (candidateIds: string[], recruiterId: string, recruiterName: string) => {
@@ -838,15 +780,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           assignedRecruiterId: currentUser.id,
           assignedRecruiterName: currentUser.name,
           status: (item.status as any) || 'New',
-          ...(item.jobTitle ? { jobTitle: item.jobTitle.trim(), isCustomPosition: item.isCustomPosition ?? true } : {}),
-          ...(item.remarks ? { remarks: item.remarks.trim() } : {}),
-          ...(item.statusRemark
-            ? {
-                statusRemark: item.statusRemark.trim(),
-                statusRemarkAt: item.statusRemarkAt || new Date().toISOString(),
-                statusRemarkBy: item.statusRemarkBy || currentUser.name,
-              }
-            : {}),
           notes: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -916,17 +849,9 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           assignedRecruiterId: assignedId,
           assignedRecruiterName: assignedName,
           status: (r.data.status as any) || 'New',
-          ...(r.data.jobTitle ? { jobTitle: r.data.jobTitle.trim(), isCustomPosition: r.data.isCustomPosition ?? true } : {}),
-          ...(r.data.clientName ? { clientName: r.data.clientName.trim() } : {}),
-          ...(r.data.expectedJoiningDate ? { expectedJoiningDate: r.data.expectedJoiningDate.trim() } : {}),
-          ...(r.data.remarks ? { remarks: r.data.remarks.trim() } : {}),
-          ...(r.data.statusRemark
-            ? {
-                statusRemark: r.data.statusRemark.trim(),
-                statusRemarkAt: r.data.statusRemarkAt || new Date().toISOString(),
-                statusRemarkBy: r.data.statusRemarkBy || currentUser.name,
-              }
-            : {}),
+          jobTitle: r.data.jobTitle,
+          clientName: r.data.clientName,
+          expectedJoiningDate: r.data.expectedJoiningDate,
           notes: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -941,14 +866,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCandidates((prev) =>
         prev.map((c) => {
           if (updatesMap.has(c.id)) {
-            const rawUpdates = updatesMap.get(c.id)!;
-            const updates: Partial<Candidate> = {};
-            Object.keys(rawUpdates).forEach((k) => {
-              const val = (rawUpdates as any)[k];
-              if (val !== undefined) {
-                (updates as any)[k] = val;
-              }
-            });
+            const updates = updatesMap.get(c.id)!;
             const changes: { field: string; oldValue: any; newValue: any }[] = [];
             Object.keys(updates).forEach((k) => {
               const key = k as keyof Candidate;
@@ -1187,44 +1105,31 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Pipeline Actions
-  const movePipelineStage = (id: string, newStage: PipelineStage, remark?: string) => {
+  const movePipelineStage = (id: string, newStage: PipelineStage) => {
     const item = pipeline.find((p) => p.id === id);
     setPipeline((prev) =>
       prev.map((p) => (p.id === id ? { ...p, stage: newStage, updatedAt: new Date().toISOString(), lastMovedBy: currentUser.name } : p))
     );
+    logActivity('candidate', 'Pipeline Stage Moved', `Moved candidate stage to ${newStage}`);
+
     if (item) {
-      const stageToStatusMap: Record<PipelineStage, CandidateStatus> = {
-        Sourced: 'New',
-        Screened: 'Screened',
-        'Submitted to Client': 'Shortlisted',
-        Interview: 'Interview Scheduled',
-        Offer: 'Offered',
-        Joined: 'Joined',
-        Rejected: 'Rejected',
-      };
-      const candStatus = stageToStatusMap[newStage];
-      if (candStatus) {
-        const trimmedRemark = remark?.trim();
-        updateCandidate(
-          item.candidateId,
-          {
-            status: candStatus,
-            ...(trimmedRemark
-              ? {
-                  statusRemark: trimmedRemark,
-                  statusRemarkAt: new Date().toISOString(),
-                  statusRemarkBy: currentUser.name,
-                }
-              : {}),
-          },
-          `Pipeline stage moved to ${newStage}${trimmedRemark ? `: "${trimmedRemark}"` : ''}`
-        );
-        if (trimmedRemark) {
-          addCandidateNote(item.candidateId, `Pipeline stage moved to ${newStage} — Remark: ${trimmedRemark}`);
+      const cand = candidates.find((c) => c.id === item.candidateId);
+      if (cand) {
+        const stageToStatusMap: Record<PipelineStage, CandidateStatus> = {
+          Sourced: 'New',
+          Screened: 'Screened',
+          'Submitted to Client': 'Shortlisted',
+          Interview: 'Interview Scheduled',
+          Offer: 'Offered',
+          Joined: 'Joined',
+          Rejected: 'Rejected',
+        };
+        const mappedStatus = stageToStatusMap[newStage];
+        if (mappedStatus && cand.status !== mappedStatus) {
+          openStatusRemarkModal(cand, mappedStatus);
         }
       }
     }
-    logActivity('candidate', 'Pipeline Stage Moved', `Moved candidate stage to ${newStage}${remark ? ` (Remark: ${remark})` : ''}`);
   };
 
   const addPipelineCandidate = (candidateId: string, jobId: string, stage: PipelineStage = 'Sourced') => {
@@ -1437,28 +1342,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       alert('Access Restricted: Only Admin can add users.');
       return;
     }
-    if (isFirebaseConfigured) {
-      // Real account: Firebase Auth user with a random password; the person sets their own via the emailed link
-      (async () => {
-        try {
-          const email = u.email.trim().toLowerCase();
-          const tempPassword = `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}Aa1!`;
-          const cred = await withSecondaryAuth((a) => createUserWithEmailAndPassword(a, email, tempPassword));
-          const { password: _pw, ...rest } = u;
-          setUsers((prev) => [...prev, { ...rest, email, id: cred.user.uid, active: true }]);
-          logActivity('system', 'User Created', `Added team member ${u.name} as ${u.role.toUpperCase()}`);
-          try {
-            await sendPasswordSetupEmail(email);
-            alert(`User created. A password-setup email was sent to ${email}.`);
-          } catch (e) {
-            alert(`User created, but the password email failed: ${friendlyFirebaseError(e)}. Use "Forgot password" on the login screen.`);
-          }
-        } catch (e) {
-          alert(`Could not create user: ${friendlyFirebaseError(e)}`);
-        }
-      })();
-      return;
-    }
     const newUser: User = {
       ...u,
       id: `usr_${Date.now()}`,
@@ -1474,15 +1357,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       alert('Access Restricted: Only Admin can update user roles/credentials.');
       return;
     }
-    let safeUpdates = updates;
-    if (isFirebaseConfigured) {
-      const { password: _pw, email: _em, ...rest } = updates; // login email/password are managed by Firebase Auth
-      safeUpdates = rest;
-      if (_em !== undefined || _pw) {
-        alert('Note: login email and password are managed by Firebase. Use "Forgot password" to reset a password. Other changes were saved.');
-      }
-    }
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...safeUpdates } : u)));
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
     logActivity('system', 'User Updated', `Updated account for user ID ${id}`);
   };
 
@@ -1573,38 +1448,30 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFirebaseConfig(cfg);
     const s = initializeFirebaseServices(cfg);
     setIsFirebaseConfigured(s.isConfigured);
-    setTimeout(() => window.location.reload(), 1600); // restart so login + sync start with the new project
+    logActivity('system', 'Firebase Connected', `Connected live Firebase project: ${cfg.projectId}`);
   };
 
   const removeFirebaseSettings = () => {
     clearFirebaseConfig();
     setFirebaseConfig(null);
     setIsFirebaseConfigured(false);
-    setTimeout(() => window.location.reload(), 300);
+    logActivity('system', 'Firebase Disconnected', 'Disconnected external Firebase credentials');
   };
 
   const resetAllData = () => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can reset system data.');
-      return;
-    }
-    if (isFirebaseConfigured) {
-      alert('Reset is disabled while connected to Firebase, because it would overwrite the live cloud data.');
-      return;
-    }
-    setUsers(INITIAL_USERS);
-    setClients(INITIAL_CLIENTS);
-    setJobs(INITIAL_JOBS);
-    setCandidates(INITIAL_CANDIDATES);
-    setPipeline(INITIAL_PIPELINE);
-    setInterviews(INITIAL_INTERVIEWS);
-    setActivities(INITIAL_ACTIVITIES);
-    setCompanySettings(INITIAL_COMPANY_SETTINGS);
-    setReminders(INITIAL_REMINDERS);
+    if (currentUser.role !== 'admin') return;
+    setClients([]);
+    setJobs([]);
+    setCandidates([]);
+    setPipeline([]);
+    setInterviews([]);
+    setActivities([]);
+    setReminders([]);
     setEditHistories([]);
     setReadNotifIds([]);
-    localStorage.clear();
-    logActivity('system', 'System Reset', 'Restored initial production demo dataset');
+    setExportLogs([]);
+    setImportLogs([]);
+    logActivity('system', 'Database Cleared', 'Cleared all CRM records for a fresh workspace');
   };
 
   return (
@@ -1612,6 +1479,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUser,
         switchUser,
+        changeMyPassword,
         users,
         isDarkMode,
         toggleDarkMode,
@@ -1631,6 +1499,14 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCandidate,
         restoreCandidate,
         addCandidateNote,
+        addCandidateRemark,
+        deleteCandidateRemark,
+        activeStatusRemarkModal,
+        openStatusRemarkModal,
+        openBulkStatusRemarkModal,
+        openAddRemarkModal,
+        closeStatusRemarkModal,
+        submitStatusRemark,
         bulkImportCandidates,
         checkDuplicate,
         bulkUpdateCandidateStatus,
@@ -1692,16 +1568,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reassignmentTargetUser,
         setReassignmentTargetUser,
         reassignAndResolveUser,
-        firebaseAuthActive: isFirebaseConfigured,
-        authReady,
-        isAuthenticated: !!fbUid && profileReady,
-        authError,
-        syncReady,
-        syncError,
-        dismissSyncError: () => setSyncError(''),
-        login,
-        logout,
-        sendPasswordSetupEmail,
         isFirebaseConfigured,
         firebaseConfig,
         saveFirebaseSettings,

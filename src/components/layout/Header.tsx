@@ -47,11 +47,9 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const {
     currentUser,
-    users,
-    switchUser,
+    changeMyPassword,
     isDarkMode,
     toggleDarkMode,
-    isFirebaseConfigured,
     candidates,
     jobs,
     clients,
@@ -59,8 +57,11 @@ export const Header: React.FC<HeaderProps> = ({
     unreadNotificationCount,
     markNotificationRead,
     clearAllNotifications,
-    firebaseAuthActive,
   } = useCRM();
+
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [passwordSavedMsg, setPasswordSavedMsg] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -98,8 +99,6 @@ export const Header: React.FC<HeaderProps> = ({
         (c) =>
           c.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
           c.phone.includes(searchQuery) ||
-          (c.jobTitle && c.jobTitle.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (c.remarks && c.remarks.toLowerCase().includes(searchQuery.toLowerCase())) ||
           c.skills.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : [];
@@ -165,14 +164,7 @@ export const Header: React.FC<HeaderProps> = ({
                         className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-xs transition-colors"
                       >
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                            <span>{cand.fullName}</span>
-                            {cand.jobTitle && (
-                              <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400">
-                                ({cand.jobTitle})
-                              </span>
-                            )}
-                          </p>
+                          <p className="font-bold text-slate-900 dark:text-white">{cand.fullName}</p>
                           <p className="text-[10px] text-slate-500">{cand.phone} • {cand.skills.slice(0, 3).join(', ')}</p>
                         </div>
                         <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
@@ -205,6 +197,33 @@ export const Header: React.FC<HeaderProps> = ({
                           <p className="text-[10px] text-slate-500">{job.clientName} • {job.location}</p>
                         </div>
                         <span className="text-[10px] font-bold text-amber-600">₹{job.salaryMaxLPA} LPA</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {filteredClients.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1">
+                    Clients ({filteredClients.length})
+                  </p>
+                  <div className="space-y-1">
+                    {filteredClients.slice(0, 4).map((cl) => (
+                      <button
+                        key={cl.id}
+                        onClick={() => {
+                          onNavigate('clients');
+                          setIsSearchOpen(false);
+                          setSearchQuery('');
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-xs transition-colors"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-900 dark:text-white">{cl.name}</p>
+                          <p className="text-[10px] text-slate-500">{cl.industry} • {cl.city}</p>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-600">{cl.status}</span>
                       </button>
                     ))}
                   </div>
@@ -280,17 +299,17 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* User Role Switcher / Admin Preview Dropdown */}
+        {/* Logged-in User Account Menu */}
         <div ref={roleRef} className="relative">
           <button
             onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
             className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Switch Role or Preview View"
+            title="Account Profile & Session"
           >
             <img
               src={currentUser.avatar}
               alt={currentUser.name}
-              className="w-8 h-8 rounded-full object-cover border-2 border-[#F5A623]"
+              className="w-8 h-8 rounded-full object-cover border-2 border-[#F5A623] bg-[#0B1F4B]"
             />
             <div className="hidden md:block text-left">
               <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{currentUser.name}</p>
@@ -300,40 +319,99 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {isRoleDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2.5 z-50 space-y-2">
-              {!firebaseAuthActive && (
-              <div>
-                <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Switch Active Role (Admin Preview)
-                </p>
-                <div className="space-y-1 mt-1">
-                  {users.map((u) => {
-                    const isCurrent = u.id === currentUser.id;
-                    return (
-                      <button
-                        key={u.id}
-                        onClick={() => {
-                          switchUser(u.id);
-                          setIsRoleDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-xs transition-colors cursor-pointer ${
-                          isCurrent
-                            ? 'bg-amber-50 dark:bg-amber-950/60 font-bold text-amber-950 dark:text-amber-200 border border-amber-200 dark:border-amber-800'
-                            : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'
-                        }`}
-                      >
-                        <img src={u.avatar} alt={u.name} className="w-7 h-7 rounded-full object-cover" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold truncate">{u.name}</p>
-                          <p className="text-[10px] text-slate-400 uppercase">{u.role.replace('_', ' ')}</p>
-                        </div>
-                        {isCurrent && <UserCheck className="w-4 h-4 text-amber-600 shrink-0" />}
-                      </button>
-                    );
-                  })}
+            <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 space-y-2.5">
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 flex items-center gap-3">
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.name}
+                  className="w-10 h-10 rounded-full object-cover border-2 border-[#F5A623] bg-[#0B1F4B] shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-extrabold text-slate-900 dark:text-white truncate">{currentUser.name}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{currentUser.email}</p>
+                  <span className="inline-block mt-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                    {currentUser.designation || currentUser.role.replace('_', ' ')}
+                  </span>
                 </div>
               </div>
-              )}
+
+              <div className="space-y-1">
+                <button
+                  onClick={() => {
+                    onNavigate('tasks');
+                    setIsRoleDropdownOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <CheckSquare className="w-4 h-4 text-blue-600" />
+                  <span>My Tasks & Follow-ups</span>
+                </button>
+
+                {currentUser.role === 'admin' && (
+                  <button
+                    onClick={() => {
+                      onNavigate('settings');
+                      setIsRoleDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <Shield className="w-4 h-4 text-[#F5A623]" />
+                    <span>Organization & User Settings</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsChangingPassword(!isChangingPassword);
+                    setPasswordSavedMsg('');
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <span>Change Account Password</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isChangingPassword ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isChangingPassword && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (newPasswordInput.trim().length < 6) {
+                        setPasswordSavedMsg('Min 6 characters required');
+                        return;
+                      }
+                      changeMyPassword(newPasswordInput.trim());
+                      setNewPasswordInput('');
+                      setPasswordSavedMsg('Password updated!');
+                      setTimeout(() => {
+                        setIsChangingPassword(false);
+                        setPasswordSavedMsg('');
+                      }, 1500);
+                    }}
+                    className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 space-y-2 border border-slate-200 dark:border-slate-700"
+                  >
+                    <input
+                      type="password"
+                      value={newPasswordInput}
+                      onChange={(e) => setNewPasswordInput(e.target.value)}
+                      placeholder="New password (min 6 chars)"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                      required
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      {passwordSavedMsg && (
+                        <span className="text-[10px] font-bold text-emerald-600">{passwordSavedMsg}</span>
+                      )}
+                      <button
+                        type="submit"
+                        className="ml-auto px-3 py-1 rounded-lg bg-[#0B1F4B] text-white text-[11px] font-bold cursor-pointer"
+                      >
+                        Update Password
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
 
               {onLogout && (
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">

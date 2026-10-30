@@ -36,6 +36,17 @@ export interface CandidateNote {
   createdAt: string;
 }
 
+export interface CandidateRemark {
+  id: string;
+  candidateId: string;
+  statusChangedTo?: CandidateStatus;
+  text: string;
+  authorUserId: string;
+  authorName: string;
+  authorRole: string;
+  createdAt: string;
+}
+
 export interface Candidate {
   id: string;
   fullName: string;
@@ -50,16 +61,12 @@ export interface Candidate {
   education: string;
   source: 'Naukri' | 'LinkedIn' | 'Referral' | 'Walk-in' | 'Foundit' | 'Direct' | 'Internal Database';
   notes: CandidateNote[];
+  remarks?: CandidateRemark[];
   assignedRecruiterId: string;
   assignedRecruiterName: string;
   status: CandidateStatus;
   jobId?: string;
   jobTitle?: string;
-  isCustomPosition?: boolean;
-  remarks?: string;
-  statusRemark?: string;
-  statusRemarkAt?: string;
-  statusRemarkBy?: string;
   clientId?: string;
   clientName?: string;
   expectedJoiningDate?: string; // Shown when status is Selected or Offered
@@ -175,12 +182,6 @@ export interface Interview {
   notes?: string;
 }
 
-export interface WhatsAppTemplate {
-  id: string;
-  title: string;
-  body: string;
-}
-
 export interface CompanySettings {
   companyName: string;
   tagline: string;
@@ -195,7 +196,6 @@ export interface CompanySettings {
   availableSkills: string[];
   availableSources: string[];
   availableIndustries: string[];
-  whatsappTemplates?: WhatsAppTemplate[];
 }
 
 export type ReminderPriority = 'High' | 'Medium' | 'Low';

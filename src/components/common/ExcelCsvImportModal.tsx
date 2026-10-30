@@ -90,12 +90,11 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
     { key: 'skills', label: 'Skills (Semicolon separated)', example: 'React.js; Node.js; TypeScript' },
     { key: 'education', label: 'Highest Education', example: 'B.Tech CS' },
     { key: 'source', label: 'Source Channel', example: 'Naukri' },
-    { key: 'jobTitle', label: 'Position / Job Applied For', example: 'Senior Frontend Engineer' },
+    { key: 'status', label: 'Hiring Status', example: 'Screened' },
+    { key: 'jobTitle', label: 'Position Applied For', example: 'Senior Frontend Engineer' },
     { key: 'clientName', label: 'Target Client', example: 'Tata Consultancy Services' },
     { key: 'assignedRecruiterName', label: 'Assigned Recruiter', example: 'Vikas Saxena' },
     { key: 'expectedJoiningDate', label: 'Expected Joining Date', example: '2026-11-15' },
-    { key: 'remarks', label: 'Remarks', example: 'Speaks fluent English, can join in 15 days' },
-    { key: 'statusRemark', label: 'Status Remark', example: 'Cleared round 1 technical screening' },
   ];
 
   const clientFields: ColumnMappingField[] = [
@@ -194,30 +193,6 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
 
         const matchIdx = parsed.headers.findIndex((h) => {
           const hClean = h.toLowerCase().replace(/[^a-z]/g, '');
-          if (field.key === 'jobTitle') {
-            if (
-              hClean === 'position' ||
-              hClean.startsWith('position') ||
-              hClean.includes('position') ||
-              hClean === 'role' ||
-              hClean === 'jobrole' ||
-              hClean.includes('jobtitle') ||
-              hClean === 'job'
-            ) {
-              return true;
-            }
-          }
-          if (field.key === 'remarks') {
-            if (
-              hClean === 'remarks' ||
-              hClean === 'remark' ||
-              hClean.includes('remark') ||
-              hClean === 'notes' ||
-              hClean.includes('comment')
-            ) {
-              return true;
-            }
-          }
           return (
             hClean === fieldKeyClean ||
             hClean === fieldLabelClean ||

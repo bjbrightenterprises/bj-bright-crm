@@ -151,38 +151,11 @@ export const CANDIDATE_EXPORT_COLUMNS: ExportColumnDef[] = [
   {
     key: 'jobTitle',
     header: 'Position Applied',
-    description: 'Job opening title or custom applied role',
-    allowedValues: 'Active job title or typed custom role',
+    description: 'Job opening title applied for',
+    allowedValues: 'Active job title or General Pool',
     dataType: 'Text',
     width: 25,
     getValue: (c: Candidate) => c.jobTitle || 'General Pool',
-  },
-  {
-    key: 'isCustomPosition',
-    header: 'Applied Position (custom)',
-    description: 'Whether the applied role was entered as a custom position',
-    allowedValues: 'Yes / No',
-    dataType: 'Text',
-    width: 24,
-    getValue: (c: Candidate) => (c.isCustomPosition ? 'Yes' : 'No'),
-  },
-  {
-    key: 'remarks',
-    header: 'Remarks',
-    description: 'Candidate remarks and recruiter observations',
-    allowedValues: 'Text up to 500 characters',
-    dataType: 'Text',
-    width: 30,
-    getValue: (c: Candidate) => c.remarks || '',
-  },
-  {
-    key: 'statusRemark',
-    header: 'Status Remark',
-    description: 'Latest status change remark and reason note',
-    allowedValues: 'Text up to 300 characters',
-    dataType: 'Text',
-    width: 30,
-    getValue: (c: Candidate) => c.statusRemark || '',
   },
   {
     key: 'clientName',
@@ -276,6 +249,37 @@ export const CANDIDATE_EXPORT_COLUMNS: ExportColumnDef[] = [
     dataType: 'Text',
     width: 18,
     getValue: () => 'Unique',
+  },
+  {
+    key: 'latestRemark',
+    header: 'Latest Remark',
+    description: 'Most recent status remark or follow-up note logged for the candidate',
+    allowedValues: 'Free text up to 500 chars',
+    dataType: 'Text',
+    width: 34,
+    getValue: (c: Candidate) => (c.remarks && c.remarks.length > 0 ? c.remarks[0].text : ''),
+  },
+  {
+    key: 'remarkDate',
+    header: 'Remark Date',
+    description: 'Date and time (IST) when the latest remark was recorded',
+    allowedValues: 'IST Date-Time string',
+    dataType: 'Text',
+    width: 22,
+    getValue: (c: Candidate) =>
+      c.remarks && c.remarks.length > 0
+        ? `${new Date(c.remarks[0].createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`
+        : '',
+  },
+  {
+    key: 'remarkBy',
+    header: 'Remark By',
+    description: 'Team member who recorded the latest remark',
+    allowedValues: 'User name & role',
+    dataType: 'Text',
+    width: 22,
+    getValue: (c: Candidate) =>
+      c.remarks && c.remarks.length > 0 ? `${c.remarks[0].authorName} (${c.remarks[0].authorRole})` : '',
   },
 ];
 

@@ -137,9 +137,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         {/* Brand Header */}
         <div className="h-18 px-5 flex items-center gap-3 border-b border-[#163270]/60 bg-[#071533]">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#F5A623] to-amber-600 flex items-center justify-center font-extrabold text-white shadow-md shadow-amber-500/20">
-            <span className="text-xl tracking-tight">BJ</span>
-          </div>
+          <img
+            src="/assets/aistudio/BJ-Bright-logo-circle_cb142036.png"
+            alt="BJ Bright Enterprises Logo"
+            className="w-11 h-11 rounded-full object-contain shrink-0 shadow-md ring-1 ring-[#F5A623]/50 bg-[#0B1F4B]"
+          />
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-bold text-white tracking-wide truncate">
               {companySettings.companyName}

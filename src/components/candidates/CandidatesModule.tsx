@@ -31,8 +31,6 @@ import { useCRM } from '../../context/CRMContext';
 import { Badge } from '../common/Badge';
 import { CandidateProfileModal } from './CandidateProfileModal';
 import { CandidateFormModal } from './CandidateFormModal';
-import { WhatsAppModal } from './WhatsAppModal';
-import { StatusRemarkModal } from './StatusRemarkModal';
 import { ExcelCsvImportModal } from '../common/ExcelCsvImportModal';
 import { ExcelExportModal } from '../common/ExcelExportModal';
 import { CANDIDATE_EXPORT_COLUMNS, generateCandidatesSummarySheet } from '../../lib/excelModuleConfigs';
@@ -49,14 +47,13 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     visibleCandidates,
     deleteCandidate,
     updateCandidate,
-    addCandidateNote,
     bulkUpdateCandidateStatus,
     bulkAssignRecruiter,
     bulkDeleteCandidates,
     users,
-    currentUser,
     companySettings,
     canCreateTasks,
+    openStatusRemarkModal,
   } = useCRM();
 
 
@@ -86,9 +83,6 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
   const [isExcelImportOpen, setIsExcelImportOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [reminderCandidate, setReminderCandidate] = useState<Candidate | null>(null);
-  const [whatsAppCandidate, setWhatsAppCandidate] = useState<Candidate | null>(null);
-  const [statusChangeTarget, setStatusChangeTarget] = useState<{ candidate: Candidate; newStatus: CandidateStatus } | null>(null);
-  const [bulkStatusTarget, setBulkStatusTarget] = useState<CandidateStatus | null>(null);
 
   // Status options
   const statusTabs: (CandidateStatus | 'All')[] = [
@@ -122,9 +116,8 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         cand.phone.includes(q) ||
         cand.email.toLowerCase().includes(q) ||
         cand.currentCompany.toLowerCase().includes(q) ||
-        (cand.jobTitle && cand.jobTitle.toLowerCase().includes(q)) ||
-        (cand.remarks && cand.remarks.toLowerCase().includes(q)) ||
-        cand.skills.some((s) => s.toLowerCase().includes(q));
+        cand.skills.some((s) => s.toLowerCase().includes(q)) ||
+        (cand.remarks && cand.remarks.some((r) => r.text.toLowerCase().includes(q)));
 
       if (!matchesSearch) return false;
 
@@ -192,43 +185,11 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     );
   };
 
-  // Status change with remarks handlers
-  const handleConfirmSingleStatusRemark = (remark?: string) => {
-    if (!statusChangeTarget) return;
-    const { candidate, newStatus } = statusChangeTarget;
-    const trimmed = remark?.trim();
-    const updates: Partial<Candidate> = {
-      status: newStatus,
-      ...(trimmed
-        ? {
-            statusRemark: trimmed,
-            statusRemarkAt: new Date().toISOString(),
-            statusRemarkBy: currentUser.name,
-          }
-        : {}),
-    };
-    updateCandidate(
-      candidate.id,
-      updates,
-      `Status changed from ${candidate.status} to ${newStatus}${trimmed ? `: "${trimmed}"` : ''}`
-    );
-    if (trimmed) {
-      addCandidateNote(candidate.id, `Status changed to ${newStatus} — Remark: ${trimmed}`);
-    }
-    setStatusChangeTarget(null);
-  };
-
-  const handleConfirmBulkStatusRemark = (remark?: string) => {
-    if (!bulkStatusTarget || selectedCandidateIds.length === 0) return;
-    bulkUpdateCandidateStatus(selectedCandidateIds, bulkStatusTarget, remark);
-    setBulkStatusTarget(null);
-    setBulkStatusToApply('');
-  };
-
   // Bulk operations
   const handleBulkStatusChange = (status: CandidateStatus) => {
     if (!status || selectedCandidateIds.length === 0) return;
-    setBulkStatusTarget(status);
+    bulkUpdateCandidateStatus(selectedCandidateIds, status);
+    setBulkStatusToApply('');
   };
 
   const handleBulkAssign = (recruiterId: string) => {
@@ -388,7 +349,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by name, position / role, phone, email, skills, company, or remarks..."
+              placeholder="Search by candidate name, phone (+91), email, skills, or company..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -648,8 +609,8 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                 <th className="py-3 px-4">Skills</th>
                 <th className="py-3 px-4">Source</th>
                 <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4">Last Remark</th>
                 <th className="py-3 px-4">Recruiter</th>
-                <th className="py-3 px-4">Remarks</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -685,7 +646,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                         />
                       </td>
 
-                      {/* Name & Exp & Position */}
+                      {/* Name & Exp */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-lg bg-[#0B1F4B]/10 dark:bg-blue-900/40 text-[#0B1F4B] dark:text-blue-300 font-bold flex items-center justify-center shrink-0">
@@ -698,23 +659,9 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                             >
                               {cand.fullName}
                             </button>
-                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                              <span className="text-[11px] text-slate-500">
-                                {cand.experienceYears} Years Exp
-                              </span>
-                              {cand.jobTitle && (
-                                <span
-                                  className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
-                                    cand.isCustomPosition
-                                      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20'
-                                      : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
-                                  }`}
-                                  title={cand.isCustomPosition ? `Custom Role: ${cand.jobTitle}` : `Job Mandate: ${cand.jobTitle}`}
-                                >
-                                  {cand.jobTitle}
-                                </span>
-                              )}
-                            </div>
+                            <span className="text-[11px] text-slate-500">
+                              {cand.experienceYears} Years Exp
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -727,16 +674,15 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                             <a href={`tel:${cand.phone}`} className="hover:underline">
                               {cand.phone}
                             </a>
-                            <button
-                              type="button"
-                              onClick={() => setWhatsAppCandidate(cand)}
-                              className="p-1 rounded-md text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors ml-0.5 inline-flex items-center justify-center cursor-pointer"
-                              title="Message on WhatsApp"
+                            <a
+                              href={whatsappUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-emerald-600 hover:text-emerald-700 ml-0.5"
+                              title="Chat on WhatsApp"
                             >
-                              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                                <path d="M12.031 2C6.511 2 2.022 6.488 2.022 12.008c0 1.83.498 3.548 1.365 5.029L2 22l5.12-1.341a9.98 9.98 0 0 0 4.911 1.357h.004c5.518 0 10.007-4.488 10.007-10.008 0-2.673-1.041-5.186-2.932-7.077A9.954 9.954 0 0 0 12.031 2zm0 18.23h-.003a8.214 8.214 0 0 1-4.187-1.15l-.3-.178-3.111.816.83-3.033-.196-.312a8.21 8.21 0 0 1-1.258-4.365c0-4.542 3.696-8.238 8.238-8.238 2.2 0 4.269.858 5.825 2.414a8.203 8.203 0 0 1 2.41 5.824c0 4.543-3.696 8.242-8.248 8.242zm4.518-6.166c-.248-.124-1.467-.724-1.694-.807-.228-.083-.394-.124-.56.124-.166.248-.642.807-.787.973-.145.166-.29.186-.538.062-.248-.124-1.047-.386-1.995-1.231-.738-.658-1.236-1.472-1.381-1.72-.145-.248-.016-.382.108-.506.112-.112.248-.29.373-.435.124-.145.166-.248.248-.414.083-.166.042-.311-.021-.435-.062-.124-.56-1.35-.767-1.85-.202-.486-.407-.42-.56-.428l-.477-.008c-.166 0-.435.062-.663.311-.228.248-.871.851-.871 2.074 0 1.223.891 2.404 1.016 2.57.124.166 1.753 2.678 4.248 3.755.594.256 1.058.409 1.42.524.597.19 1.14.163 1.569.099.479-.071 1.467-.6 1.674-1.18.207-.58.207-1.077.145-1.18-.062-.104-.228-.166-.476-.29z"/>
-                              </svg>
-                            </button>
+                              <Share2 className="w-3 h-3" />
+                            </a>
                           </div>
                           <div className="flex items-center gap-1 text-[11px] text-slate-500">
                             <Mail className="w-3 h-3 text-slate-400" />
@@ -796,12 +742,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                       <td className="py-3 px-4">
                         <select
                           value={cand.status}
-                          onChange={(e) => {
-                            const next = e.target.value as CandidateStatus;
-                            if (next !== cand.status) {
-                              setStatusChangeTarget({ candidate: cand, newStatus: next });
-                            }
-                          }}
+                          onChange={(e) => openStatusRemarkModal(cand, e.target.value as CandidateStatus)}
                           className={`text-[11px] font-bold rounded-md px-2 py-1 border transition-colors cursor-pointer ${
                             cand.status === 'Joined'
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300'
@@ -824,6 +765,13 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                         </select>
                       </td>
 
+                      {/* Last Remark */}
+                      <td className="py-3 px-4 max-w-[180px]" title={cand.remarks && cand.remarks.length > 0 ? cand.remarks[0].text : 'No remarks'}>
+                        <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate block">
+                          {cand.remarks && cand.remarks.length > 0 ? cand.remarks[0].text : <span className="text-slate-400 italic">No remarks</span>}
+                        </span>
+                      </td>
+
                       {/* Assigned Recruiter */}
                       <td className="py-3 px-4">
                         <span className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">
@@ -831,48 +779,9 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                         </span>
                       </td>
 
-                      {/* Remarks (Status Remark takes priority with author/date; falls back to general remarks) */}
-                      <td className="py-3 px-4 max-w-[200px]">
-                        {cand.statusRemark ? (
-                          <div
-                            className="cursor-help"
-                            title={`Status Remark: "${cand.statusRemark}"${cand.statusRemarkBy ? ` (by ${cand.statusRemarkBy}${cand.statusRemarkAt ? `, ${new Date(cand.statusRemarkAt).toLocaleDateString('en-IN')}` : ''})` : ''}`}
-                          >
-                            <div className="truncate text-slate-800 dark:text-slate-200 text-[11px] font-semibold">
-                              {cand.statusRemark}
-                            </div>
-                            <div className="text-[10px] text-slate-400 truncate">
-                              by {cand.statusRemarkBy || 'Recruiter'}
-                              {cand.statusRemarkAt ? ` • ${new Date(cand.statusRemarkAt).toLocaleDateString('en-IN')}` : ''}
-                            </div>
-                          </div>
-                        ) : cand.remarks ? (
-                          <div
-                            className="truncate text-slate-700 dark:text-slate-300 text-[11px] font-medium cursor-help"
-                            title={`Remarks: "${cand.remarks}"`}
-                          >
-                            {cand.remarks}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-[11px] italic">—</span>
-                        )}
-                      </td>
-
                       {/* Actions */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {/* Message on WhatsApp Button */}
-                          <button
-                            type="button"
-                            onClick={() => setWhatsAppCandidate(cand)}
-                            className="p-1 rounded text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer"
-                            title="Message on WhatsApp"
-                          >
-                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                              <path d="M12.031 2C6.511 2 2.022 6.488 2.022 12.008c0 1.83.498 3.548 1.365 5.029L2 22l5.12-1.341a9.98 9.98 0 0 0 4.911 1.357h.004c5.518 0 10.007-4.488 10.007-10.008 0-2.673-1.041-5.186-2.932-7.077A9.954 9.954 0 0 0 12.031 2zm0 18.23h-.003a8.214 8.214 0 0 1-4.187-1.15l-.3-.178-3.111.816.83-3.033-.196-.312a8.21 8.21 0 0 1-1.258-4.365c0-4.542 3.696-8.238 8.238-8.238 2.2 0 4.269.858 5.825 2.414a8.203 8.203 0 0 1 2.41 5.824c0 4.543-3.696 8.242-8.248 8.242zm4.518-6.166c-.248-.124-1.467-.724-1.694-.807-.228-.083-.394-.124-.56.124-.166.248-.642.807-.787.973-.145.166-.29.186-.538.062-.248-.124-1.047-.386-1.995-1.231-.738-.658-1.236-1.472-1.381-1.72-.145-.248-.016-.382.108-.506.112-.112.248-.29.373-.435.124-.145.166-.248.248-.414.083-.166.042-.311-.021-.435-.062-.124-.56-1.35-.767-1.85-.202-.486-.407-.42-.56-.428l-.477-.008c-.166 0-.435.062-.663.311-.228.248-.871.851-.871 2.074 0 1.223.891 2.404 1.016 2.57.124.166 1.753 2.678 4.248 3.755.594.256 1.058.409 1.42.524.597.19 1.14.163 1.569.099.479-.071 1.467-.6 1.674-1.18.207-.58.207-1.077.145-1.18-.062-.104-.228-.166-.476-.29z"/>
-                            </svg>
-                          </button>
-
                           {/* Set Reminder Button (Admin & HR Executive only) */}
                           {canCreateTasks && (
                             <button
@@ -1000,37 +909,6 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         relatedId={reminderCandidate?.id}
         relatedName={reminderCandidate?.fullName}
         defaultTitle={reminderCandidate ? `Follow up with ${reminderCandidate.fullName} regarding ${reminderCandidate.currentCompany || 'recruitment'}` : undefined}
-      />
-
-      {/* WhatsApp Messaging Modal */}
-      <WhatsAppModal
-        isOpen={!!whatsAppCandidate}
-        onClose={() => setWhatsAppCandidate(null)}
-        candidate={whatsAppCandidate}
-      />
-
-      {/* Single Candidate Status Change Remark Modal */}
-      <StatusRemarkModal
-        isOpen={!!statusChangeTarget}
-        onClose={() => setStatusChangeTarget(null)}
-        onConfirm={handleConfirmSingleStatusRemark}
-        candidateName={statusChangeTarget?.candidate.fullName || ''}
-        oldStatus={statusChangeTarget?.candidate.status || ''}
-        newStatus={statusChangeTarget?.newStatus || ''}
-      />
-
-      {/* Bulk Candidate Status Change Remark Modal */}
-      <StatusRemarkModal
-        isOpen={!!bulkStatusTarget}
-        onClose={() => {
-          setBulkStatusTarget(null);
-          setBulkStatusToApply('');
-        }}
-        onConfirm={handleConfirmBulkStatusRemark}
-        candidateName={`${selectedCandidateIds.length} Selected Candidates`}
-        oldStatus="Selected Candidates"
-        newStatus={bulkStatusTarget || ''}
-        count={selectedCandidateIds.length}
       />
     </div>
   );

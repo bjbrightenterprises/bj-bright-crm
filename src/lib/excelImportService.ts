@@ -99,8 +99,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       { header: 'Target Client', key: 'clientName', width: 24 },
       { header: 'Assigned Recruiter', key: 'assignedRecruiterName', width: 22 },
       { header: 'Expected Joining Date', key: 'expectedJoiningDate', width: 22 },
-      { header: 'Remarks', key: 'remarks', width: 30 },
-      { header: 'Status Remark', key: 'statusRemark', width: 30 },
+      { header: 'Remark', key: 'remark', width: 32 },
     ];
 
     // Example Row 1
@@ -118,11 +117,10 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       'Naukri',
       'Screened',
       'Lead Full Stack Engineer',
-      'Tata Consultancy Services (TCS)',
-      'Vikas Saxena',
+      'Corporate Client',
+      'Praveen Verma',
       '2026-11-15',
-      'Speaks fluent English, immediate joiner',
-      'Cleared round 1 technical screening',
+      'Interested, available for technical round',
     ]);
 
     // Format phone column as text explicitly

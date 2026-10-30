@@ -31,9 +31,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
   const [email, setEmail] = useState('');
   const [city, setCity] = useState('Noida');
   const [experienceYears, setExperienceYears] = useState<number>(3);
-  const [jobSelection, setJobSelection] = useState(''); // '' (General Pool), job.id, or '__OTHER__'
-  const [customJobTitle, setCustomJobTitle] = useState('');
-  const [remarks, setRemarks] = useState('');
+  const [jobId, setJobId] = useState('');
   const [source, setSource] = useState<Candidate['source']>('Naukri');
 
   // More Details (Collapsible)
@@ -70,22 +68,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       setSkills(candidateToEdit.skills || []);
       setAssignedRecruiterId(candidateToEdit.assignedRecruiterId);
       setStatus(candidateToEdit.status);
-      setRemarks(candidateToEdit.remarks || '');
-
-      const hasMatchingJob = Boolean(
-        candidateToEdit.jobId && jobs.some((j) => j.id === candidateToEdit.jobId)
-      );
-      if (candidateToEdit.isCustomPosition || (candidateToEdit.jobTitle && !hasMatchingJob)) {
-        setJobSelection('__OTHER__');
-        setCustomJobTitle(candidateToEdit.jobTitle || '');
-      } else if (candidateToEdit.jobId && hasMatchingJob) {
-        setJobSelection(candidateToEdit.jobId);
-        setCustomJobTitle('');
-      } else {
-        setJobSelection('');
-        setCustomJobTitle('');
-      }
-
+      setJobId(candidateToEdit.jobId || '');
       setEditReason('');
     } else {
       setFullName('');
@@ -100,9 +83,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       setSkills(['Communication']);
       setAssignedRecruiterId(currentUser.id);
       setStatus('New');
-      setJobSelection('');
-      setCustomJobTitle('');
-      setRemarks('');
+      setJobId('');
       setEditReason('');
     }
 
@@ -110,7 +91,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
     setDuplicateMatch(null);
     setConfirmDuplicate(false);
     setSuccessMessage('');
-  }, [candidateToEdit, isOpen, currentUser, jobs]);
+  }, [candidateToEdit, isOpen, currentUser]);
 
   // Live duplicate check while typing mobile or email
   useEffect(() => {
@@ -163,48 +144,10 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       newErrors.experienceYears = 'Valid experience years required (0-40).';
     }
 
-    if (jobSelection === '__OTHER__') {
-      const trimmedCustom = customJobTitle.trim();
-      if (!trimmedCustom || trimmedCustom.length < 2) {
-        newErrors.customJobTitle = 'Job role / position is required (minimum 2 characters).';
-      }
-    }
-
-    if (remarks && remarks.length > 500) {
-      newErrors.remarks = 'Remarks cannot exceed 500 characters.';
-    }
-
     if (candidateToEdit) {
-      const currentJobTitle =
-        jobSelection === '__OTHER__'
-          ? customJobTitle.trim()
-          : (jobs.find((j) => j.id === jobSelection)?.title || '');
-      const prevJobTitle = candidateToEdit.jobTitle || '';
-      const currentJobId = jobSelection === '__OTHER__' ? '' : jobSelection;
-      const prevJobId = candidateToEdit.jobId || '';
-
-      const otherFieldsChanged =
-        fullName.trim() !== candidateToEdit.fullName ||
-        phone.trim() !== candidateToEdit.phone ||
-        email.trim().toLowerCase() !== candidateToEdit.email.toLowerCase() ||
-        city.trim() !== candidateToEdit.city ||
-        currentCompany.trim() !== (candidateToEdit.currentCompany || 'Confidential') ||
-        Number(currentSalaryLPA) !== Number(candidateToEdit.currentSalaryLPA) ||
-        Number(expectedSalaryLPA) !== Number(candidateToEdit.expectedSalaryLPA) ||
-        Number(experienceYears) !== Number(candidateToEdit.experienceYears) ||
-        education.trim() !== candidateToEdit.education ||
-        source !== candidateToEdit.source ||
-        assignedRecruiterId !== candidateToEdit.assignedRecruiterId ||
-        status !== candidateToEdit.status ||
-        JSON.stringify(skills) !== JSON.stringify(candidateToEdit.skills || []) ||
-        currentJobTitle !== prevJobTitle ||
-        currentJobId !== prevJobId;
-
-      if (otherFieldsChanged) {
-        const finalReason = editReason.trim() || quickReasonOption;
-        if (finalReason.length < 10) {
-          newErrors.editReason = 'Mandatory edit reason must be at least 10 characters long.';
-        }
+      const finalReason = editReason.trim() || quickReasonOption;
+      if (finalReason.length < 10) {
+        newErrors.editReason = 'Mandatory edit reason must be at least 10 characters long.';
       }
     }
 
@@ -220,11 +163,10 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
     }
 
     const assignedRecruiter = users.find((u) => u.id === assignedRecruiterId);
-    const isOther = jobSelection === '__OTHER__';
-    const assignedJob = !isOther && jobSelection ? jobs.find((j) => j.id === jobSelection) : undefined;
+    const assignedJob = jobs.find((j) => j.id === jobId);
 
     if (candidateToEdit) {
-      const finalReason = editReason.trim() || quickReasonOption || 'Updated candidate details';
+      const finalReason = editReason.trim() || quickReasonOption;
       updateCandidate(
         candidateToEdit.id,
         {
@@ -242,30 +184,10 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
           assignedRecruiterId,
           assignedRecruiterName: assignedRecruiter?.name || currentUser.name,
           status,
-          ...(isOther
-            ? {
-                jobId: '',
-                jobTitle: customJobTitle.trim(),
-                clientId: '',
-                clientName: '',
-                isCustomPosition: true,
-              }
-            : assignedJob
-            ? {
-                jobId: assignedJob.id,
-                jobTitle: assignedJob.title,
-                clientId: assignedJob.clientId,
-                clientName: assignedJob.clientName,
-                isCustomPosition: false,
-              }
-            : {
-                jobId: '',
-                jobTitle: '',
-                clientId: '',
-                clientName: '',
-                isCustomPosition: false,
-              }),
-          ...(remarks.trim() ? { remarks: remarks.trim() } : { remarks: '' }),
+          jobId: jobId || undefined,
+          jobTitle: assignedJob?.title || undefined,
+          clientId: assignedJob?.clientId || undefined,
+          clientName: assignedJob?.clientName || undefined,
         },
         finalReason
       );
@@ -286,30 +208,10 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
         assignedRecruiterId,
         assignedRecruiterName: assignedRecruiter?.name || currentUser.name,
         status: 'New',
-        ...(isOther
-          ? {
-              jobId: '',
-              jobTitle: customJobTitle.trim(),
-              clientId: '',
-              clientName: '',
-              isCustomPosition: true,
-            }
-          : assignedJob
-          ? {
-              jobId: assignedJob.id,
-              jobTitle: assignedJob.title,
-              clientId: assignedJob.clientId,
-              clientName: assignedJob.clientName,
-              isCustomPosition: false,
-            }
-          : {
-              jobId: '',
-              jobTitle: '',
-              clientId: '',
-              clientName: '',
-              isCustomPosition: false,
-            }),
-        ...(remarks.trim() ? { remarks: remarks.trim() } : {}),
+        jobId: jobId || undefined,
+        jobTitle: assignedJob?.title || undefined,
+        clientId: assignedJob?.clientId || undefined,
+        clientName: assignedJob?.clientName || undefined,
       });
 
       if (res.success) {
@@ -318,8 +220,6 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
           setFullName('');
           setPhone('+91 ');
           setEmail('');
-          setCustomJobTitle('');
-          setRemarks('');
           setTimeout(() => setSuccessMessage(''), 3000);
         } else {
           setTimeout(() => {
@@ -327,6 +227,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
           }, 800);
         }
       }
+
     }
   };
 
@@ -442,17 +343,8 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1">Position / Job Applied For</label>
             <select
-              value={jobSelection}
-              onChange={(e) => {
-                setJobSelection(e.target.value);
-                if (errors.customJobTitle) {
-                  setErrors((prev) => {
-                    const next = { ...prev };
-                    delete next.customJobTitle;
-                    return next;
-                  });
-                }
-              }}
+              value={jobId}
+              onChange={(e) => setJobId(e.target.value)}
               className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
             >
               <option value="">General Talent Pool / Unassigned</option>
@@ -461,38 +353,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
                   {j.title} — {j.clientName}
                 </option>
               ))}
-              <option value="__OTHER__">Other (not in list)</option>
             </select>
-
-            {jobSelection === '__OTHER__' && (
-              <div className="mt-2">
-                <label className="block text-xs font-bold text-amber-400 mb-1">
-                  Enter job role / position <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={customJobTitle}
-                  onChange={(e) => {
-                    setCustomJobTitle(e.target.value);
-                    if (errors.customJobTitle) {
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.customJobTitle;
-                        return next;
-                      });
-                    }
-                  }}
-                  placeholder="e.g. Math Teacher, Accountant"
-                  className={`w-full px-3 py-2 rounded-xl bg-slate-800 border text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-[#F5A623] focus:outline-none ${
-                    errors.customJobTitle ? 'border-rose-500' : 'border-amber-500/60'
-                  }`}
-                />
-                {errors.customJobTitle && (
-                  <p className="text-[10px] text-rose-400 mt-1">{errors.customJobTitle}</p>
-                )}
-              </div>
-            )}
           </div>
 
           <div>
@@ -506,36 +367,6 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-          </div>
-
-          {/* Remarks Field (Prominent in main essentials section, max 500 chars) */}
-          <div className="sm:col-span-2">
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-bold text-slate-300">
-                Remarks
-              </label>
-              <span className={`text-[10px] font-mono ${remarks.length > 480 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
-                {remarks.length}/500
-              </span>
-            </div>
-            <textarea
-              rows={2}
-              maxLength={500}
-              value={remarks}
-              onChange={(e) => {
-                setRemarks(e.target.value);
-                if (errors.remarks) {
-                  setErrors((prev) => {
-                    const next = { ...prev };
-                    delete next.remarks;
-                    return next;
-                  });
-                }
-              }}
-              placeholder="Any remark about this candidate, e.g. speaks fluent English, can join in 15 days"
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-[#F5A623] focus:outline-none resize-none"
-            />
-            {errors.remarks && <p className="text-[10px] text-rose-400 mt-1">{errors.remarks}</p>}
           </div>
         </div>
 

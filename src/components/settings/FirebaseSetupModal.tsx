@@ -1,7 +1,4 @@
 import React, { useState } from 'react';
-import rulesText from '../../../firestore.rules?raw';
-import { getFirebaseDb, getSavedFirebaseConfig, testFirestoreConnection } from '../../lib/firebase';
-import { countLocalData, uploadLocalDataToFirestore } from '../../lib/firestoreSync';
 import { Modal } from '../common/Modal';
 import { useCRM } from '../../context/CRMContext';
 import {
@@ -28,40 +25,7 @@ export const FirebaseSetupModal: React.FC<FirebaseSetupModalProps> = ({ isOpen, 
     saveFirebaseSettings,
     removeFirebaseSettings,
     resetAllData,
-    currentUser,
   } = useCRM();
-
-  const hasSavedConfig = !!getSavedFirebaseConfig();
-  const localCounts = countLocalData();
-  const localTotal = Object.values(localCounts).reduce((a, b) => a + b, 0);
-  const [testMsg, setTestMsg] = useState('');
-  const [uploadMsg, setUploadMsg] = useState('');
-  const [uploading, setUploading] = useState(false);
-
-  const handleTest = async () => {
-    const db = getFirebaseDb();
-    if (!db) {
-      setTestMsg('Firebase is not configured.');
-      return;
-    }
-    setTestMsg('Testing...');
-    const r = await testFirestoreConnection(db);
-    setTestMsg((r.success ? 'OK: ' : 'Failed: ') + r.message);
-  };
-
-  const handleUpload = async () => {
-    if (!confirm(`Upload ${localTotal} records saved in this browser to Firebase? Records with the same ID will be overwritten.`)) return;
-    setUploading(true);
-    setUploadMsg('Uploading...');
-    try {
-      const counts = await uploadLocalDataToFirestore((d, t) => setUploadMsg(`Uploading ${d}/${t}...`));
-      setUploadMsg('Done: ' + Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', '));
-    } catch (e) {
-      setUploadMsg('Failed: ' + (e as Error).message);
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const [apiKey, setApiKey] = useState(firebaseConfig?.apiKey || '');
   const [projectId, setProjectId] = useState(firebaseConfig?.projectId || '');
@@ -102,7 +66,14 @@ export const FirebaseSetupModal: React.FC<FirebaseSetupModalProps> = ({ isOpen, 
     }
   };
 
-  const sampleRules = rulesText;
+  const sampleRules = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`;
 
   const copyRules = () => {
     navigator.clipboard.writeText(sampleRules);
@@ -141,7 +112,7 @@ export const FirebaseSetupModal: React.FC<FirebaseSetupModalProps> = ({ isOpen, 
             </div>
           </div>
 
-          {isFirebaseConfigured && hasSavedConfig && (
+          {isFirebaseConfigured && (
             <button
               onClick={handleDisconnect}
               className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1 transition-colors"
@@ -250,7 +221,7 @@ export const FirebaseSetupModal: React.FC<FirebaseSetupModalProps> = ({ isOpen, 
               className="text-xs text-blue-600 dark:text-amber-400 font-bold hover:underline flex items-center gap-1"
             >
               <Copy className="w-3.5 h-3.5" />
-              <span>{copiedSnippet ? 'Copied Security Rules!' : 'Copy Firestore Rules (paste in Firebase Console > Firestore > Rules > Publish)'}</span>
+              <span>{copiedSnippet ? 'Copied Security Rules!' : 'Copy Recommended Firestore Rules'}</span>
             </button>
 
             <div className="flex items-center gap-2">
@@ -272,44 +243,7 @@ export const FirebaseSetupModal: React.FC<FirebaseSetupModalProps> = ({ isOpen, 
           </div>
         </form>
 
-        {isFirebaseConfigured && (
-          <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-bold text-slate-900 dark:text-white">Test Firestore connection</p>
-              <button
-                onClick={handleTest}
-                className="px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700 font-bold whitespace-nowrap"
-              >
-                Test
-              </button>
-            </div>
-            {testMsg && <p className="text-[11px] text-slate-600 dark:text-slate-300">{testMsg}</p>}
-
-            {currentUser.role === 'admin' && (
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-bold text-slate-900 dark:text-white">Upload data saved in this browser to Firebase</p>
-                  <p className="text-[11px] text-slate-500">
-                    {localTotal > 0
-                      ? `Found ${localTotal} local records (${Object.entries(localCounts).map(([k, v]) => `${v} ${k}`).join(', ')}). Users are not uploaded; add them in Settings > Users.`
-                      : 'No local records found in this browser.'}
-                  </p>
-                  {uploadMsg && <p className="text-[11px] mt-1 text-slate-700 dark:text-slate-200">{uploadMsg}</p>}
-                </div>
-                <button
-                  onClick={handleUpload}
-                  disabled={uploading || localTotal === 0}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] disabled:opacity-50 text-white font-bold whitespace-nowrap"
-                >
-                  Upload
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Reset Database to Sample Data */}
-        {!isFirebaseConfigured && (
         <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
           <div>
             <p className="font-bold text-slate-900 dark:text-white">Restore Initial Demo Dataset</p>
@@ -330,7 +264,6 @@ export const FirebaseSetupModal: React.FC<FirebaseSetupModalProps> = ({ isOpen, 
             Reset Sample Data
           </button>
         </div>
-        )}
       </div>
     </Modal>
   );

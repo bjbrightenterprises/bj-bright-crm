@@ -118,7 +118,24 @@ export async function generateExcelWorkbook(options: ExportOptions): Promise<Blo
   aboutTitle.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
   aboutTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B1F4B' } };
   aboutTitle.alignment = { vertical: 'middle', horizontal: 'center' };
-  aboutSheet.getRow(1).height = 36;
+  aboutSheet.getRow(1).height = 44;
+
+  try {
+    const logoRes = await fetch('/assets/aistudio/BJ-Bright-logo-circle_cb142036.png');
+    if (logoRes.ok) {
+      const logoBuf = await logoRes.arrayBuffer();
+      const logoId = wb.addImage({
+        buffer: logoBuf,
+        extension: 'png',
+      });
+      aboutSheet.addImage(logoId, {
+        tl: { col: 0.15, row: 0.1 },
+        ext: { width: 48, height: 48 },
+      });
+    }
+  } catch {
+    // Fallback gracefully if logo fetch is unavailable
+  }
 
   aboutSheet.addRow({});
   aboutSheet.addRow({ prop: 'Export Timestamp (IST)', val: `${nowIST} IST`, notes: 'Indian Standard Time' });
@@ -292,6 +309,45 @@ export async function generateExcelWorkbook(options: ExportOptions): Promise<Blo
       metric: 'Total Active Records',
       formula: { formula: `COUNTA(${sheetName}!A2:A${effectiveRows.length + 1})` },
       desc: `=COUNTA(${sheetName}!A2:A${effectiveRows.length + 1})`,
+    });
+  }
+
+  // 4. REMARKS HISTORY SHEET (For Candidate Exports)
+  if (moduleName.toLowerCase().includes('candidate')) {
+    const remarksSheet = wb.addWorksheet('Remarks History', {
+      views: [{ state: 'frozen', ySplit: 1, showGridLines: true }],
+    });
+    remarksSheet.columns = [
+      { header: 'Candidate ID', key: 'candidateId', width: 22 },
+      { header: 'Candidate Name', key: 'candidateName', width: 26 },
+      { header: 'Status', key: 'status', width: 20 },
+      { header: 'Remark Text', key: 'text', width: 45 },
+      { header: 'Remark By', key: 'authorName', width: 22 },
+      { header: 'Author Role', key: 'authorRole', width: 18 },
+      { header: 'Date & Time (IST)', key: 'createdAt', width: 24 },
+    ];
+    const rHeader = remarksSheet.getRow(1);
+    rHeader.height = 28;
+    rHeader.eachCell((cell) => {
+      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B1F4B' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    });
+
+    data.forEach((cand: any) => {
+      if (Array.isArray(cand.remarks)) {
+        cand.remarks.forEach((rem: any) => {
+          remarksSheet.addRow({
+            candidateId: cand.id,
+            candidateName: cand.fullName,
+            status: rem.statusChangedTo || cand.status || '',
+            text: sanitizeCellValue(rem.text),
+            authorName: rem.authorName,
+            authorRole: String(rem.authorRole || '').toUpperCase().replace('_', ' '),
+            createdAt: `${new Date(rem.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`,
+          });
+        });
+      }
     });
   }
 

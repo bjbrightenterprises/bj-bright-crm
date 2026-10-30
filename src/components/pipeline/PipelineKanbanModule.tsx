@@ -21,8 +21,6 @@ import { useCRM } from '../../context/CRMContext';
 import { Badge } from '../common/Badge';
 import { ExcelExportModal } from '../common/ExcelExportModal';
 import { PIPELINE_EXPORT_COLUMNS } from '../../lib/excelModuleConfigs';
-import { WhatsAppModal } from '../candidates/WhatsAppModal';
-import { StatusRemarkModal } from '../candidates/StatusRemarkModal';
 
 const STAGES: PipelineStage[] = [
   'Sourced',
@@ -50,8 +48,6 @@ export const PipelineKanbanModule: React.FC<PipelineKanbanModuleProps> = ({
   const [selectedJobId, setSelectedJobId] = useState<string>(initialJobId || 'all');
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [whatsAppCandidate, setWhatsAppCandidate] = useState<Candidate | null>(null);
-  const [pendingStageMove, setPendingStageMove] = useState<{ item: PipelineItem; targetStage: PipelineStage } | null>(null);
 
   // Filter pipeline items
   const filteredPipeline = useMemo(() => {
@@ -94,10 +90,7 @@ export const PipelineKanbanModule: React.FC<PipelineKanbanModuleProps> = ({
     e.preventDefault();
     const itemId = e.dataTransfer.getData('text/plain') || draggedItemId;
     if (itemId) {
-      const item = visiblePipeline.find((p) => p.id === itemId);
-      if (item && item.stage !== targetStage) {
-        setPendingStageMove({ item, targetStage });
-      }
+      movePipelineStage(itemId, targetStage);
     }
     setDraggedItemId(null);
   };
@@ -105,23 +98,15 @@ export const PipelineKanbanModule: React.FC<PipelineKanbanModuleProps> = ({
   const handleNextStage = (item: PipelineItem) => {
     const currentIndex = STAGES.indexOf(item.stage);
     if (currentIndex < STAGES.length - 2) {
-      const targetStage = STAGES[currentIndex + 1];
-      setPendingStageMove({ item, targetStage });
+      movePipelineStage(item.id, STAGES[currentIndex + 1]);
     }
   };
 
   const handlePrevStage = (item: PipelineItem) => {
     const currentIndex = STAGES.indexOf(item.stage);
     if (currentIndex > 0) {
-      const targetStage = STAGES[currentIndex - 1];
-      setPendingStageMove({ item, targetStage });
+      movePipelineStage(item.id, STAGES[currentIndex - 1]);
     }
-  };
-
-  const handleConfirmStageRemark = (remark?: string) => {
-    if (!pendingStageMove) return;
-    movePipelineStage(pendingStageMove.item.id, pendingStageMove.targetStage, remark);
-    setPendingStageMove(null);
   };
 
   const stageHeaderColors: Record<PipelineStage, string> = {
@@ -225,11 +210,11 @@ export const PipelineKanbanModule: React.FC<PipelineKanbanModuleProps> = ({
                               {item.candidateName}
                             </button>
                             <p className="text-[11px] text-slate-500 font-medium truncate">
-                              {item.jobTitle || candidateObj?.jobTitle || 'General Pool'}
+                              {item.jobTitle}
                             </p>
                           </div>
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                            {item.clientName ? item.clientName.split(' ')[0] : (candidateObj?.isCustomPosition ? 'Custom' : 'Direct')}
+                            {item.clientName.split(' ')[0]}
                           </span>
                         </div>
 
@@ -256,18 +241,6 @@ export const PipelineKanbanModule: React.FC<PipelineKanbanModuleProps> = ({
                         {/* Card Action Controls */}
                         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                           <div className="flex items-center gap-1">
-                            {candidateObj && (
-                              <button
-                                type="button"
-                                onClick={() => setWhatsAppCandidate(candidateObj)}
-                                className="p-1 rounded text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer"
-                                title="Message on WhatsApp"
-                              >
-                                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                                  <path d="M12.031 2C6.511 2 2.022 6.488 2.022 12.008c0 1.83.498 3.548 1.365 5.029L2 22l5.12-1.341a9.98 9.98 0 0 0 4.911 1.357h.004c5.518 0 10.007-4.488 10.007-10.008 0-2.673-1.041-5.186-2.932-7.077A9.954 9.954 0 0 0 12.031 2zm0 18.23h-.003a8.214 8.214 0 0 1-4.187-1.15l-.3-.178-3.111.816.83-3.033-.196-.312a8.21 8.21 0 0 1-1.258-4.365c0-4.542 3.696-8.238 8.238-8.238 2.2 0 4.269.858 5.825 2.414a8.203 8.203 0 0 1 2.41 5.824c0 4.543-3.696 8.242-8.248 8.242zm4.518-6.166c-.248-.124-1.467-.724-1.694-.807-.228-.083-.394-.124-.56.124-.166.248-.642.807-.787.973-.145.166-.29.186-.538.062-.248-.124-1.047-.386-1.995-1.231-.738-.658-1.236-1.472-1.381-1.72-.145-.248-.016-.382.108-.506.112-.112.248-.29.373-.435.124-.145.166-.248.248-.414.083-.166.042-.311-.021-.435-.062-.124-.56-1.35-.767-1.85-.202-.486-.407-.42-.56-.428l-.477-.008c-.166 0-.435.062-.663.311-.228.248-.871.851-.871 2.074 0 1.223.891 2.404 1.016 2.57.124.166 1.753 2.678 4.248 3.755.594.256 1.058.409 1.42.524.597.19 1.14.163 1.569.099.479-.071 1.467-.6 1.674-1.18.207-.58.207-1.077.145-1.18-.062-.104-.228-.166-.476-.29z"/>
-                                </svg>
-                              </button>
-                            )}
                             {candidateObj && (
                               <button
                                 onClick={() => onScheduleInterview(candidateObj)}
@@ -336,23 +309,6 @@ export const PipelineKanbanModule: React.FC<PipelineKanbanModuleProps> = ({
         filteredData={filteredPipeline}
         allAccessibleData={visiblePipeline}
         filtersDescription={`Mandate: ${selectedJobId === 'all' ? 'All Requisitions' : selectedJobId}`}
-      />
-
-      {/* WhatsApp Messaging Modal */}
-      <WhatsAppModal
-        isOpen={!!whatsAppCandidate}
-        onClose={() => setWhatsAppCandidate(null)}
-        candidate={whatsAppCandidate}
-      />
-
-      {/* Stage Transition Status Remark Modal */}
-      <StatusRemarkModal
-        isOpen={!!pendingStageMove}
-        onClose={() => setPendingStageMove(null)}
-        onConfirm={handleConfirmStageRemark}
-        candidateName={pendingStageMove?.item.candidateName || ''}
-        oldStatus={pendingStageMove?.item.stage || ''}
-        newStatus={pendingStageMove?.targetStage || ''}
       />
     </div>
   );

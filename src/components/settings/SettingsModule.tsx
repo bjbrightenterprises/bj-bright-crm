@@ -19,14 +19,11 @@ import {
   FileSpreadsheet,
   ArrowDownToLine,
   ArrowUpFromLine,
-  Mail,
-  MessageSquare,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
-import { User, UserRole, WhatsAppTemplate } from '../../types/crm';
+import { User, UserRole } from '../../types/crm';
 import { Badge } from '../common/Badge';
 import { Modal } from '../common/Modal';
-import { DEFAULT_WHATSAPP_TEMPLATES } from '../../lib/whatsappTemplates';
 
 export const SettingsModule: React.FC = () => {
   const {
@@ -41,8 +38,6 @@ export const SettingsModule: React.FC = () => {
     setReassignmentTargetUser,
     reassignAndResolveUser,
     switchUser,
-    firebaseAuthActive,
-    sendPasswordSetupEmail,
     companySettings,
     updateCompanySettings,
     isFirebaseConfigured,
@@ -54,21 +49,7 @@ export const SettingsModule: React.FC = () => {
     importLogs,
   } = useCRM();
 
-  const [activeTab, setActiveTab] = useState<'users' | 'company' | 'masters' | 'whatsapp' | 'firebase' | 'audit_logs'>('users');
-
-  // WhatsApp Templates state
-  const currentWhatsAppTemplates: WhatsAppTemplate[] =
-    companySettings.whatsappTemplates && companySettings.whatsappTemplates.length > 0
-      ? companySettings.whatsappTemplates
-      : DEFAULT_WHATSAPP_TEMPLATES;
-
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [templateEditTitle, setTemplateEditTitle] = useState('');
-  const [templateEditBody, setTemplateEditBody] = useState('');
-  const [isAddingTemplate, setIsAddingTemplate] = useState(false);
-  const [newTemplateTitle, setNewTemplateTitle] = useState('');
-  const [newTemplateBody, setNewTemplateBody] = useState('');
-  const [templateNotice, setTemplateNotice] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'users' | 'company' | 'masters' | 'firebase' | 'audit_logs'>('users');
 
 
   // Company form state
@@ -172,61 +153,6 @@ export const SettingsModule: React.FC = () => {
     setIsUserModalOpen(false);
   };
 
-  const handleStartEditTemplate = (tmpl: WhatsAppTemplate) => {
-    setEditingTemplateId(tmpl.id);
-    setTemplateEditTitle(tmpl.title);
-    setTemplateEditBody(tmpl.body);
-  };
-
-  const handleSaveEditedTemplate = (id: string) => {
-    if (!templateEditTitle.trim() || !templateEditBody.trim()) return;
-    const updated = currentWhatsAppTemplates.map((t) =>
-      t.id === id ? { ...t, title: templateEditTitle.trim(), body: templateEditBody.trim() } : t
-    );
-    updateCompanySettings({ whatsappTemplates: updated });
-    setEditingTemplateId(null);
-    setTemplateNotice('Template updated successfully');
-    setTimeout(() => setTemplateNotice(null), 2500);
-  };
-
-  const handleCreateNewTemplate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTemplateTitle.trim() || !newTemplateBody.trim()) return;
-    const newTmpl: WhatsAppTemplate = {
-      id: `tmpl_${Date.now()}`,
-      title: newTemplateTitle.trim(),
-      body: newTemplateBody.trim(),
-    };
-    const updated = [...currentWhatsAppTemplates, newTmpl];
-    updateCompanySettings({ whatsappTemplates: updated });
-    setIsAddingTemplate(false);
-    setNewTemplateTitle('');
-    setNewTemplateBody('');
-    setTemplateNotice('New template added successfully');
-    setTimeout(() => setTemplateNotice(null), 2500);
-  };
-
-  const handleDeleteTemplate = (id: string) => {
-    if (currentWhatsAppTemplates.length <= 1) {
-      alert('At least one template must remain in the system.');
-      return;
-    }
-    if (confirm('Are you sure you want to delete this template?')) {
-      const updated = currentWhatsAppTemplates.filter((t) => t.id !== id);
-      updateCompanySettings({ whatsappTemplates: updated });
-      setTemplateNotice('Template deleted');
-      setTimeout(() => setTemplateNotice(null), 2500);
-    }
-  };
-
-  const handleResetTemplates = () => {
-    if (confirm('Reset all WhatsApp templates back to factory defaults? Any custom templates will be replaced.')) {
-      updateCompanySettings({ whatsappTemplates: DEFAULT_WHATSAPP_TEMPLATES });
-      setTemplateNotice('Reset templates to default library');
-      setTimeout(() => setTemplateNotice(null), 2500);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div>
@@ -275,18 +201,6 @@ export const SettingsModule: React.FC = () => {
         >
           <ListFilter className="w-3.5 h-3.5" />
           <span>Dropdown Masters</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('whatsapp')}
-          className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
-            activeTab === 'whatsapp'
-              ? 'border-[#0B1F4B] dark:border-[#F5A623] text-[#0B1F4B] dark:text-[#F5A623]'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-          <span>WhatsApp Templates ({currentWhatsAppTemplates.length})</span>
         </button>
 
         <button
@@ -412,31 +326,6 @@ export const SettingsModule: React.FC = () => {
 
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {!firebaseAuthActive && (
-                          <button
-                            onClick={() => switchUser(u.id)}
-                            className="px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-[11px] cursor-pointer"
-                          >
-                            Switch
-                          </button>
-                          )}
-
-                          {firebaseAuthActive && canManageUsers && (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await sendPasswordSetupEmail(u.email);
-                                  alert(`Password reset email sent to ${u.email}`);
-                                } catch (err) {
-                                  alert(`Could not send email: ${(err as Error).message}`);
-                                }
-                              }}
-                              className="p-1 rounded text-slate-400 hover:text-blue-600 cursor-pointer"
-                              title="Send password reset email"
-                            >
-                              <Mail className="w-3.5 h-3.5" />
-                            </button>
-                          )}
 
                           {canManageUsers && (
                             <button
@@ -599,27 +488,213 @@ export const SettingsModule: React.FC = () => {
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
               />
             </div>
+            <div>
+              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Website URL</label>
+              <input
+                type="text"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Office Address</label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">City & State</label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">PIN Code</label>
+              <input
+                type="text"
+                value={pincode}
+                onChange={(e) => setPincode(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
           </div>
           <button
             type="submit"
-            className="px-5 py-2.5 bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold rounded-lg shadow-xs cursor-pointer"
+            className="px-5 py-2.5 bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold rounded-lg shadow-xs cursor-pointer flex items-center gap-2"
           >
-            Save Company Profile
+            <Save className="w-4 h-4 text-[#F5A623]" />
+            <span>Save Company Profile</span>
           </button>
         </form>
       )}
 
       {/* Tab 3: Masters */}
       {activeTab === 'masters' && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 text-xs space-y-4 max-w-3xl">
-          <h3 className="font-bold text-slate-900 dark:text-white">Dropdown Master Options</h3>
-          <p className="text-slate-500">Configure candidate sources and skill tags available across forms.</p>
-          <div>
-            <label className="font-bold block mb-1">Available Sources</label>
-            <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
+          {/* Skills Master */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200 dark:border-slate-800 space-y-4">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white">Candidate Skill Tags ({companySettings.availableSkills.length})</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Skills available across candidate & job requisition forms</p>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = newSkill.trim();
+                if (!val || companySettings.availableSkills.includes(val)) return;
+                updateCompanySettings({ availableSkills: [...companySettings.availableSkills, val] });
+                setNewSkill('');
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                value={newSkill}
+                onChange={(e) => setNewSkill(e.target.value)}
+                placeholder="Add new skill (e.g. SAP FICO)"
+                className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
+              >
+                + Add
+              </button>
+            </form>
+            <div className="flex flex-wrap gap-1.5 max-h-64 overflow-y-auto">
+              {companySettings.availableSkills.map((s) => (
+                <span
+                  key={s}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium"
+                >
+                  <span>{s}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateCompanySettings({
+                        availableSkills: companySettings.availableSkills.filter((item) => item !== s),
+                      })
+                    }
+                    className="text-slate-400 hover:text-rose-500 font-bold cursor-pointer"
+                    title="Remove skill"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Sources Master */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200 dark:border-slate-800 space-y-4">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white">Sourcing Channels ({companySettings.availableSources.length})</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Channels for tracking candidate acquisition</p>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = newSource.trim();
+                if (!val || companySettings.availableSources.includes(val)) return;
+                updateCompanySettings({ availableSources: [...companySettings.availableSources, val] });
+                setNewSource('');
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                value={newSource}
+                onChange={(e) => setNewSource(e.target.value)}
+                placeholder="Add source (e.g. Apna, Shine)"
+                className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
+              >
+                + Add
+              </button>
+            </form>
+            <div className="flex flex-wrap gap-1.5">
               {companySettings.availableSources.map((s) => (
-                <span key={s} className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-medium">
-                  {s}
+                <span
+                  key={s}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium"
+                >
+                  <span>{s}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateCompanySettings({
+                        availableSources: companySettings.availableSources.filter((item) => item !== s),
+                      })
+                    }
+                    className="text-slate-400 hover:text-rose-500 font-bold cursor-pointer"
+                    title="Remove source"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Industries Master */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200 dark:border-slate-800 space-y-4">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white">Client Industries ({companySettings.availableIndustries.length})</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Sectors available when onboarding corporate clients</p>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = newIndustry.trim();
+                if (!val || companySettings.availableIndustries.includes(val)) return;
+                updateCompanySettings({ availableIndustries: [...companySettings.availableIndustries, val] });
+                setNewIndustry('');
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                value={newIndustry}
+                onChange={(e) => setNewIndustry(e.target.value)}
+                placeholder="Add industry sector"
+                className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
+              >
+                + Add
+              </button>
+            </form>
+            <div className="flex flex-wrap gap-1.5">
+              {companySettings.availableIndustries.map((ind) => (
+                <span
+                  key={ind}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium"
+                >
+                  <span>{ind}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateCompanySettings({
+                        availableIndustries: companySettings.availableIndustries.filter((item) => item !== ind),
+                      })
+                    }
+                    className="text-slate-400 hover:text-rose-500 font-bold cursor-pointer"
+                    title="Remove industry"
+                  >
+                    ×
+                  </button>
                 </span>
               ))}
             </div>
@@ -627,263 +702,117 @@ export const SettingsModule: React.FC = () => {
         </div>
       )}
 
-      {/* Tab: WhatsApp Templates */}
-      {activeTab === 'whatsapp' && (
-        <div className="space-y-6 max-w-4xl">
-          {/* Header & Controls */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800">
-            <div>
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-emerald-600" />
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  WhatsApp Messaging Templates ({currentWhatsAppTemplates.length})
-                </h3>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Manage pre-configured recruiter WhatsApp message templates. Placeholders are auto-populated dynamically when opening a candidate chat.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleResetTemplates}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Restore standard library of 10 templates"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                <span>Reset Defaults</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsAddingTemplate(true)}
-                className="px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] dark:bg-[#F5A623] dark:hover:bg-amber-500 text-white dark:text-slate-950 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Template</span>
-              </button>
-            </div>
-          </div>
-
-          {templateNotice && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-2 animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{templateNotice}</span>
-            </div>
-          )}
-
-          {/* Placeholders Guide Banner */}
-          <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/40 text-xs space-y-2">
-            <span className="font-bold text-blue-950 dark:text-blue-200 uppercase tracking-wider text-[10px]">
-              Supported Dynamic Placeholders
-            </span>
-            <div className="flex flex-wrap gap-2 text-[11px]">
-              <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-mono text-blue-700 dark:text-blue-300">
-                &#123;name&#125; <span className="text-slate-400 font-sans text-[10px]">(Candidate Name)</span>
-              </span>
-              <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-mono text-blue-700 dark:text-blue-300">
-                &#123;position&#125; <span className="text-slate-400 font-sans text-[10px]">(Candidate Job Role)</span>
-              </span>
-              <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-mono text-blue-700 dark:text-blue-300">
-                &#123;company&#125; <span className="text-slate-400 font-sans text-[10px]">(Client / Company)</span>
-              </span>
-              <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-mono text-blue-700 dark:text-blue-300">
-                &#123;recruiter&#125; <span className="text-slate-400 font-sans text-[10px]">(Your Name)</span>
-              </span>
-              <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-mono text-blue-700 dark:text-blue-300">
-                &#123;date&#125; <span className="text-slate-400 font-sans text-[10px]">(Date)</span>
-              </span>
-              <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-mono text-blue-700 dark:text-blue-300">
-                &#123;time&#125; <span className="text-slate-400 font-sans text-[10px]">(Time)</span>
-              </span>
-              <span className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-mono text-blue-700 dark:text-blue-300">
-                &#123;location&#125; <span className="text-slate-400 font-sans text-[10px]">(Interview Location)</span>
-              </span>
-            </div>
-          </div>
-
-          {/* New Template Form */}
-          {isAddingTemplate && (
-            <form
-              onSubmit={handleCreateNewTemplate}
-              className="p-5 rounded-xl bg-white dark:bg-slate-900 border-2 border-emerald-500/40 shadow-md space-y-4 text-xs animate-in fade-in"
-            >
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Plus className="w-4 h-4 text-emerald-600" />
-                  Add New Message Template
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingTemplate(false)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-
+      {/* Tab 4: Firebase & Database Administration */}
+      {activeTab === 'firebase' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!fbApiKey.trim() || !fbProjectId.trim()) return;
+              saveFirebaseSettings({
+                apiKey: fbApiKey.trim(),
+                projectId: fbProjectId.trim(),
+                appId: fbAppId.trim(),
+                authDomain: `${fbProjectId.trim()}.firebaseapp.com`,
+                storageBucket: `${fbProjectId.trim()}.appspot.com`,
+              });
+            }}
+            className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 space-y-4"
+          >
+            <div className="flex items-center justify-between">
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Template Title / Subject *
-                </label>
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                  <Database className="w-4 h-4 text-[#F5A623]" />
+                  <span>Firebase Cloud Configuration</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Connect your organization&apos;s Firebase Firestore project
+                </p>
+              </div>
+              <span
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                  isFirebaseConfigured
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                }`}
+              >
+                {isFirebaseConfigured ? 'Firebase Connected' : 'Local Persistence Active'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Firebase Project ID *</label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. Assessment Test Link, Background Verification"
-                  value={newTemplateTitle}
-                  onChange={(e) => setNewTemplateTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+                  value={fbProjectId}
+                  onChange={(e) => setFbProjectId(e.target.value)}
+                  placeholder="e.g. bj-bright-crm-prod"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                 />
               </div>
-
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Message Body * (Use placeholders like &#123;name&#125;, &#123;position&#125;)
-                </label>
-                <textarea
-                  rows={5}
-                  required
-                  placeholder="Dear {name}, this is {recruiter} from BJ Bright Enterprises regarding your application for {position}..."
-                  value={newTemplateBody}
-                  onChange={(e) => setNewTemplateBody(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-[#0B1F4B] resize-y"
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Firebase Web API Key *</label>
+                <input
+                  type="password"
+                  value={fbApiKey}
+                  onChange={(e) => setFbApiKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                 />
               </div>
+              <div>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Firebase App ID</label>
+                <input
+                  type="text"
+                  value={fbAppId}
+                  onChange={(e) => setFbAppId(e.target.value)}
+                  placeholder="1:1234567890:web:abcdef"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
 
-              <div className="flex justify-end gap-2">
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold cursor-pointer"
+              >
+                Save & Connect Firebase
+              </button>
+              {isFirebaseConfigured && (
                 <button
                   type="button"
-                  onClick={() => setIsAddingTemplate(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer"
+                  onClick={removeFirebaseSettings}
+                  className="px-4 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold cursor-pointer"
                 >
-                  Cancel
+                  Disconnect
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-colors cursor-pointer shadow-xs"
-                >
-                  Save New Template
-                </button>
-              </div>
-            </form>
-          )}
+              )}
+            </div>
+          </form>
 
-          {/* Templates List */}
-          <div className="space-y-3">
-            {currentWhatsAppTemplates.map((tmpl) => {
-              const isEditing = editingTemplateId === tmpl.id;
-
-              return (
-                <div
-                  key={tmpl.id}
-                  className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3"
-                >
-                  {isEditing ? (
-                    <div className="space-y-3 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900 dark:text-white">
-                          Edit Template
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          ID: {tmpl.id}
-                        </span>
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                          Template Title
-                        </label>
-                        <input
-                          type="text"
-                          value={templateEditTitle}
-                          onChange={(e) => setTemplateEditTitle(e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                          Message Body
-                        </label>
-                        <textarea
-                          rows={6}
-                          value={templateEditBody}
-                          onChange={(e) => setTemplateEditBody(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs resize-y"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditingTemplateId(null)}
-                          className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSaveEditedTemplate(tmpl.id)}
-                          className="px-4 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] dark:bg-[#F5A623] dark:hover:bg-amber-500 text-white dark:text-slate-950 text-xs font-bold cursor-pointer transition-colors"
-                        >
-                          Save Changes
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex items-start justify-between gap-3 mb-2">
-                        <div>
-                          <h4 className="font-bold text-slate-900 dark:text-white text-xs">
-                            {tmpl.title}
-                          </h4>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            {tmpl.id}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleStartEditTemplate(tmpl)}
-                            className="p-1 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                            title="Edit Template"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                          {currentWhatsAppTemplates.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTemplate(tmpl.id)}
-                              className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                              title="Delete Template"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed font-sans">
-                        {tmpl.body}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 space-y-4">
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-rose-500" />
+              <span>Workspace Data Administration</span>
+            </h3>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Clear all candidates, clients, job requisitions, pipeline items, interviews, and tasks to start with a fresh empty database. Your Admin account and Company Profile settings will be preserved.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('Are you sure you want to clear all CRM records (Candidates, Clients, Jobs, Pipeline, Interviews, Tasks)? Team accounts and Company settings will remain intact.')) {
+                  resetAllData();
+                }
+              }}
+              className="px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-2 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Clear All Workspace Records</span>
+            </button>
           </div>
-        </div>
-      )}
-
-      {/* Tab 4: Firebase */}
-      {activeTab === 'firebase' && (
-        <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 text-xs space-y-4 max-w-3xl">
-          <h3 className="font-bold text-slate-900 dark:text-white">Firebase Backend Status</h3>
-          <p className="text-slate-500">
-            {isFirebaseConfigured ? 'Connected to Firebase Firestore project.' : 'Running on LocalStorage fallback mode.'}
-          </p>
         </div>
       )}
 
@@ -1138,11 +1067,6 @@ export const SettingsModule: React.FC = () => {
             />
           </div>
 
-          {firebaseAuthActive ? (
-            <p className="text-[11px] text-slate-500 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2.5">
-              A login is created automatically and a password-setup email is sent to this address.
-            </p>
-          ) : (
           <div>
             <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Password (min 8 chars)</label>
             <input
@@ -1153,7 +1077,6 @@ export const SettingsModule: React.FC = () => {
               className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
           </div>
-          )}
 
           <div>
             <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Access Role</label>
