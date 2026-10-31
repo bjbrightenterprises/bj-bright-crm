@@ -17,23 +17,17 @@ import {
   ExportLogItem,
   ImportLogItem,
   CandidateRemark,
+  ClientSection,
+  ClientRemark,
+  getClientSection,
+  sectionToClientStatus,
+  CLIENT_SECTION_LABELS,
 } from '../types/crm';
 import {
   INITIAL_USERS,
-  INITIAL_CLIENTS,
-  INITIAL_JOBS,
-  INITIAL_CANDIDATES,
-  INITIAL_PIPELINE,
-  INITIAL_INTERVIEWS,
-  INITIAL_ACTIVITIES,
-  INITIAL_COMPANY_SETTINGS,
-  INITIAL_REMINDERS,
 } from '../lib/mockData';
+import { dataService } from '../lib/dataService';
 import {
-  getSavedFirebaseConfig,
-  saveFirebaseConfig,
-  clearFirebaseConfig,
-  initializeFirebaseServices,
   FirebaseConfigOptions,
 } from '../lib/firebase';
 
@@ -84,11 +78,21 @@ interface CRMContextType {
   clients: Client[];
   visibleClients: Client[];
   trashClients: Client[];
-  addClient: (c: Omit<Client, 'id' | 'createdAt' | 'activeJobsCount' | 'placedCandidatesCount'>) => void;
-  updateClient: (id: string, updates: Partial<Client>, reason?: string) => void;
-  deleteClient: (id: string) => void;
+  addClient: (
+    c: Omit<Client, 'id' | 'createdAt' | 'activeJobsCount' | 'placedCandidatesCount'>,
+    initialRemark?: string
+  ) => void;
+  updateClient: (id: string, updates: Partial<Client>, reason: string) => void;
+  moveClientSection: (
+    id: string,
+    targetSection: ClientSection,
+    remarkText: string,
+    keyDateValue: string
+  ) => void;
+  addClientRemark: (id: string, text: string) => void;
+  deleteClient: (id: string, reason: string) => void;
   restoreClient: (id: string) => void;
-  bulkImportClients: (newClients: Partial<Client>[]) => number;
+  bulkImportClients: (newClients: Array<Partial<Client> & { latestRemark?: string }>) => number;
 
   // Jobs
   jobs: JobOpening[];
@@ -165,25 +169,31 @@ interface CRMContextType {
   setReassignmentTargetUser: (val: { user: User; type: 'disable' | 'delete' } | null) => void;
   reassignAndResolveUser: (oldUserId: string, newUserId: string, actionType: 'disable' | 'delete') => void;
 
-  // Firebase
+  // Demo Mode & Data Controls
   isFirebaseConfigured: boolean;
   firebaseConfig: FirebaseConfigOptions | null;
   saveFirebaseSettings: (cfg: FirebaseConfigOptions) => void;
   removeFirebaseSettings: () => void;
   resetAllData: () => void;
+  downloadDemoData: () => void;
 }
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Ensure realistic demo seed data is loaded on first run via the single dataService
+  useState(() => {
+    dataService.ensureSeedDataInitialized();
+  });
+
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem('bj_theme') === 'dark';
+    return dataService.getTheme() === 'dark';
   });
 
   const toggleDarkMode = () => {
     setIsDarkMode((prev) => {
       const next = !prev;
-      localStorage.setItem('bj_theme', next ? 'dark' : 'light');
+      dataService.setTheme(next ? 'dark' : 'light');
       if (next) {
         document.documentElement.classList.add('dark');
       } else {
@@ -203,60 +213,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [globalSearch, setGlobalSearch] = useState('');
 
-  // One-time cleanup of legacy demo seed records from localStorage while keeping real organization records
-  useState(() => {
-    try {
-      if (localStorage.getItem('bj_prod_clean_v1') !== 'true') {
-        const demoUserIds = new Set(['usr_mgr_anjali', 'usr_rec_vikas', 'usr_hr_pooja']);
-        const demoClientIds = new Set(['cli_tcs', 'cli_paytm', 'cli_hcl', 'cli_infoedge', 'cli_pinelabs', 'cli_jubilant']);
-        const isDemoId = (id: string, prefixes: string[]) =>
-          prefixes.some((p) => new RegExp(`^${p}\\d+$`).test(id));
-
-        const filterList = <T extends { id: string }>(key: string, fn: (item: T) => boolean) => {
-          const raw = localStorage.getItem(key);
-          if (!raw) return;
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            localStorage.setItem(key, JSON.stringify(parsed.filter(fn)));
-          }
-        };
-
-        filterList<User>('bj_users', (u) => !demoUserIds.has(u.id));
-        filterList<Client>('bj_clients', (c) => !demoClientIds.has(c.id));
-        filterList<JobOpening>('bj_jobs', (j) => !isDemoId(j.id, ['job_']));
-        filterList<Candidate>('bj_candidates', (c) => !isDemoId(c.id, ['cand_']));
-        filterList<PipelineItem>('bj_pipeline', (p) => !isDemoId(p.id, ['pipe_']));
-        filterList<Interview>('bj_interviews', (i) => !isDemoId(i.id, ['int_']));
-        filterList<ReminderTask>('bj_reminders', (r) => !isDemoId(r.id, ['rem_']));
-        filterList<ActivityLogItem>('bj_activities', (a) => !isDemoId(a.id, ['act_']));
-
-        const curId = localStorage.getItem('bj_current_user_id');
-        if (curId && demoUserIds.has(curId)) {
-          localStorage.setItem('bj_current_user_id', 'usr_admin');
-        }
-        localStorage.setItem('bj_prod_clean_v1', 'true');
-      }
-    } catch {
-      // Ignore storage migration errors
-    }
-  });
-
-  const loadStored = <T,>(key: string, fallback: T): T => {
-    try {
-      const item = localStorage.getItem(key);
-      return item ? JSON.parse(item) : fallback;
-    } catch {
-      return fallback;
-    }
-  };
-
-  const [users, setUsers] = useState<User[]>(() => {
-    const stored = loadStored('bj_users', INITIAL_USERS);
-    return stored.length > 0 ? stored : INITIAL_USERS;
-  });
-  const [currentUserId, setCurrentUserId] = useState<string>(() => {
-    return localStorage.getItem('bj_current_user_id') || 'usr_admin';
-  });
+  const [users, setUsers] = useState<User[]>(() => dataService.getUsers());
+  const [currentUserId, setCurrentUserId] = useState<string>(() => dataService.getSessionUserId());
 
   const currentUser = useMemo(() => {
     const found = users.find((u) => u.id === currentUserId);
@@ -273,7 +231,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setCurrentUserId(userId);
-    localStorage.setItem('bj_current_user_id', userId);
+    dataService.setSessionUserId(userId);
     if (target) {
       logActivity(
         'system',
@@ -290,91 +248,69 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logActivity('system', 'Password Updated', `${currentUser.name} updated their account password`);
   };
 
-  const [candidates, setCandidates] = useState<Candidate[]>(() =>
-    loadStored('bj_candidates', INITIAL_CANDIDATES)
-  );
-  const [clients, setClients] = useState<Client[]>(() => loadStored('bj_clients', INITIAL_CLIENTS));
-  const [jobs, setJobs] = useState<JobOpening[]>(() => loadStored('bj_jobs', INITIAL_JOBS));
-  const [pipeline, setPipeline] = useState<PipelineItem[]>(() =>
-    loadStored('bj_pipeline', INITIAL_PIPELINE)
-  );
-  const [interviews, setInterviews] = useState<Interview[]>(() =>
-    loadStored('bj_interviews', INITIAL_INTERVIEWS)
-  );
-  const [activities, setActivities] = useState<ActivityLogItem[]>(() =>
-    loadStored('bj_activities', INITIAL_ACTIVITIES)
-  );
+  const [candidates, setCandidates] = useState<Candidate[]>(() => dataService.getCandidates());
+  const [clients, setClients] = useState<Client[]>(() => dataService.getClients());
+  const [jobs, setJobs] = useState<JobOpening[]>(() => dataService.getJobs());
+  const [pipeline, setPipeline] = useState<PipelineItem[]>(() => dataService.getPipeline());
+  const [interviews, setInterviews] = useState<Interview[]>(() => dataService.getInterviews());
+  const [activities, setActivities] = useState<ActivityLogItem[]>(() => dataService.getActivities());
   const [companySettings, setCompanySettings] = useState<CompanySettings>(() =>
-    loadStored('bj_settings', INITIAL_COMPANY_SETTINGS)
+    dataService.getCompanySettings()
   );
-  const [reminders, setReminders] = useState<ReminderTask[]>(() =>
-    loadStored('bj_reminders', INITIAL_REMINDERS)
-  );
+  const [reminders, setReminders] = useState<ReminderTask[]>(() => dataService.getReminders());
   const [editHistories, setEditHistories] = useState<EditHistoryItem[]>(() =>
-    loadStored('bj_edit_histories', [])
+    dataService.getEditHistories()
   );
-  const [readNotifIds, setReadNotifIds] = useState<string[]>(() =>
-    loadStored('bj_read_notifs', [])
-  );
-  const [exportLogs, setExportLogs] = useState<ExportLogItem[]>(() =>
-    loadStored('bj_export_logs', [])
-  );
-  const [importLogs, setImportLogs] = useState<ImportLogItem[]>(() =>
-    loadStored('bj_import_logs', [])
-  );
+  const [readNotifIds, setReadNotifIds] = useState<string[]>(() => dataService.getReadNotifIds());
+  const [exportLogs, setExportLogs] = useState<ExportLogItem[]>(() => dataService.getExportLogs());
+  const [importLogs, setImportLogs] = useState<ImportLogItem[]>(() => dataService.getImportLogs());
 
   const [reassignmentTargetUser, setReassignmentTargetUser] = useState<{ user: User; type: 'disable' | 'delete' } | null>(null);
 
-  // Firebase state
-  const [firebaseConfig, setFirebaseConfig] = useState<FirebaseConfigOptions | null>(() =>
-    getSavedFirebaseConfig()
-  );
-  const [isFirebaseConfigured, setIsFirebaseConfigured] = useState<boolean>(() => {
-    const s = initializeFirebaseServices();
-    return s.isConfigured;
-  });
+  const [firebaseConfig] = useState<FirebaseConfigOptions | null>(null);
+  const [isFirebaseConfigured] = useState<boolean>(false);
 
   const [viewAllToggle, setViewAllToggle] = useState<boolean>(false);
 
-  // Save to localStorage
+  // Persist all changes via the single dataService
   useEffect(() => {
-    localStorage.setItem('bj_users', JSON.stringify(users));
+    dataService.saveUsers(users);
   }, [users]);
   useEffect(() => {
-    localStorage.setItem('bj_candidates', JSON.stringify(candidates));
+    dataService.saveCandidates(candidates);
   }, [candidates]);
   useEffect(() => {
-    localStorage.setItem('bj_clients', JSON.stringify(clients));
+    dataService.saveClients(clients);
   }, [clients]);
   useEffect(() => {
-    localStorage.setItem('bj_jobs', JSON.stringify(jobs));
+    dataService.saveJobs(jobs);
   }, [jobs]);
   useEffect(() => {
-    localStorage.setItem('bj_pipeline', JSON.stringify(pipeline));
+    dataService.savePipeline(pipeline);
   }, [pipeline]);
   useEffect(() => {
-    localStorage.setItem('bj_interviews', JSON.stringify(interviews));
+    dataService.saveInterviews(interviews);
   }, [interviews]);
   useEffect(() => {
-    localStorage.setItem('bj_activities', JSON.stringify(activities));
+    dataService.saveActivities(activities);
   }, [activities]);
   useEffect(() => {
-    localStorage.setItem('bj_settings', JSON.stringify(companySettings));
+    dataService.saveCompanySettings(companySettings);
   }, [companySettings]);
   useEffect(() => {
-    localStorage.setItem('bj_reminders', JSON.stringify(reminders));
+    dataService.saveReminders(reminders);
   }, [reminders]);
   useEffect(() => {
-    localStorage.setItem('bj_edit_histories', JSON.stringify(editHistories));
+    dataService.saveEditHistories(editHistories);
   }, [editHistories]);
   useEffect(() => {
-    localStorage.setItem('bj_read_notifs', JSON.stringify(readNotifIds));
+    dataService.saveReadNotifIds(readNotifIds);
   }, [readNotifIds]);
   useEffect(() => {
-    localStorage.setItem('bj_export_logs', JSON.stringify(exportLogs));
+    dataService.saveExportLogs(exportLogs);
   }, [exportLogs]);
   useEffect(() => {
-    localStorage.setItem('bj_import_logs', JSON.stringify(importLogs));
+    dataService.saveImportLogs(importLogs);
   }, [importLogs]);
 
   // Permissions
@@ -389,7 +325,14 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const activeJobs = useMemo(() => jobs.filter((j) => !j.deletedAt), [jobs]);
 
   const trashCandidates = useMemo(() => candidates.filter((c) => c.deletedAt), [candidates]);
-  const trashClients = useMemo(() => clients.filter((c) => c.deletedAt), [clients]);
+  const trashClients = useMemo(() => {
+    const thirtyDaysAgo = Date.now() - 30 * 86400000;
+    return clients.filter((c) => {
+      if (!c.deletedAt) return false;
+      const delTime = new Date(c.deletedAt).getTime();
+      return isNaN(delTime) || delTime >= thirtyDaysAgo;
+    });
+  }, [clients]);
   const trashJobs = useMemo(() => jobs.filter((j) => j.deletedAt), [jobs]);
 
   const visibleCandidates = useMemo(() => {
@@ -896,72 +839,335 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { added, updated, skipped };
   };
 
-  // Client Actions
-  const addClient = (c: Omit<Client, 'id' | 'createdAt' | 'activeJobsCount' | 'placedCandidatesCount'>) => {
+  // Client Actions (Admin, Manager, HR Executive for create, update, move, remark, import; Admin only for delete & restore)
+  const canManageClients =
+    currentUser.role === 'admin' ||
+    currentUser.role === 'manager' ||
+    currentUser.role === 'hr_executive';
+
+  const addClient = (
+    c: Omit<Client, 'id' | 'createdAt' | 'activeJobsCount' | 'placedCandidatesCount'>,
+    initialRemark?: string
+  ) => {
+    if (!canManageClients) return;
+    const nowIso = new Date().toISOString();
+    const clientId = `cli_${Date.now()}`;
+    const sec: ClientSection = c.section || getClientSection(c);
+    const trimmedRemark = (initialRemark || '').trim();
+    const initialRemarksList: ClientRemark[] =
+      trimmedRemark.length >= 3
+        ? [
+            {
+              id: `crem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              clientId,
+              section: sec,
+              text: trimmedRemark,
+              authorUserId: currentUser.id,
+              authorName: currentUser.name,
+              authorRole: currentUser.role,
+              createdAt: nowIso,
+            },
+          ]
+        : c.remarks || [];
+
     const newClient: Client = {
       ...c,
-      id: `cli_${Date.now()}`,
-      createdAt: new Date().toISOString(),
+      id: clientId,
+      name: c.name.trim(),
+      city: c.city.trim(),
+      address: c.address.trim(),
+      website: c.website.trim(),
+      paymentTerms: c.paymentTerms.trim(),
+      section: sec,
+      status: sectionToClientStatus(sec),
+      remarks: initialRemarksList,
+      createdAt: nowIso,
+      updatedAt: nowIso,
       activeJobsCount: 0,
       placedCandidatesCount: 0,
     };
     setClients((prev) => [newClient, ...prev]);
-    logActivity('client', 'Client Onboarded', `Onboarded client company: ${c.name}`);
+    logActivity(
+      'client',
+      'Client Onboarded',
+      `Added client company: ${newClient.name} (${CLIENT_SECTION_LABELS[sec]})`
+    );
   };
 
-  const updateClient = (id: string, updates: Partial<Client>, reason = 'Client updated details') => {
+  const updateClient = (id: string, updates: Partial<Client>, reason: string) => {
+    if (!canManageClients) return;
+    const trimmedReason = (reason || '').trim();
+    if (trimmedReason.length < 10) return;
+
     const old = clients.find((c) => c.id === id);
     if (!old) return;
 
+    const nextSection: ClientSection = updates.section || old.section || getClientSection(old);
+    const normalizedUpdates: Partial<Client> = {
+      ...updates,
+      section: nextSection,
+      status: sectionToClientStatus(nextSection),
+      updatedAt: new Date().toISOString(),
+    };
+
     const changes: { field: string; oldValue: any; newValue: any }[] = [];
-    Object.keys(updates).forEach((key) => {
+    Object.keys(normalizedUpdates).forEach((key) => {
+      if (key === 'updatedAt' || key === 'status') return;
       const k = key as keyof Client;
-      if (JSON.stringify(old[k]) !== JSON.stringify(updates[k])) {
-        changes.push({ field: k, oldValue: old[k], newValue: updates[k] });
+      if (JSON.stringify(old[k]) !== JSON.stringify(normalizedUpdates[k])) {
+        changes.push({ field: k, oldValue: old[k], newValue: normalizedUpdates[k] });
       }
     });
     if (changes.length > 0) {
-      addEditHistory(id, 'client', reason || 'Client updated details', changes);
+      addEditHistory(id, 'client', trimmedReason, changes);
     }
 
-    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
-    logActivity('client', 'Client Updated', `Updated client ${old.name}. Reason: ${reason}`);
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...normalizedUpdates } : c)));
+
+    // Keep linked jobs & candidates company name in sync if company name was edited
+    if (normalizedUpdates.name && normalizedUpdates.name !== old.name) {
+      const newName = normalizedUpdates.name;
+      setJobs((prev) =>
+        prev.map((j) => (j.clientId === id ? { ...j, clientName: newName } : j))
+      );
+      setCandidates((prev) =>
+        prev.map((cand) =>
+          cand.clientId === id || cand.clientName === old.name
+            ? { ...cand, clientName: newName }
+            : cand
+        )
+      );
+      setPipeline((prev) =>
+        prev.map((p) => (p.clientId === id ? { ...p, clientName: newName } : p))
+      );
+      setInterviews((prev) =>
+        prev.map((i) => (i.clientId === id ? { ...i, clientName: newName } : i))
+      );
+    }
+
+    logActivity('client', 'Client Updated', `Updated client ${old.name}. Reason: ${trimmedReason}`);
   };
 
-  const deleteClient = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can delete records.');
-      return;
+  const moveClientSection = (
+    id: string,
+    targetSection: ClientSection,
+    remarkText: string,
+    keyDateValue: string
+  ) => {
+    if (!canManageClients) return;
+    const trimmedRemark = remarkText.trim();
+    if (trimmedRemark.length < 3 || !keyDateValue) return;
+
+    const old = clients.find((c) => c.id === id);
+    if (!old) return;
+
+    const oldSection = getClientSection(old);
+    const nowIso = new Date().toISOString();
+
+    const newRemark: ClientRemark = {
+      id: `crem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      clientId: id,
+      section: targetSection,
+      text: trimmedRemark,
+      authorUserId: currentUser.id,
+      authorName: currentUser.name,
+      authorRole: currentUser.role,
+      createdAt: nowIso,
+    };
+
+    const dateUpdates: Partial<Client> =
+      targetSection === 'Green'
+        ? { agreementSignedDate: keyDateValue }
+        : targetSection === 'Blue'
+        ? { lastContactedDate: keyDateValue }
+        : { enquiryDate: keyDateValue };
+
+    if (oldSection !== targetSection) {
+      addEditHistory(id, 'client', `Moved section: ${trimmedRemark}`, [
+        {
+          field: 'section',
+          oldValue: `${oldSection} (${CLIENT_SECTION_LABELS[oldSection]})`,
+          newValue: `${targetSection} (${CLIENT_SECTION_LABELS[targetSection]})`,
+        },
+      ]);
     }
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        return {
+          ...c,
+          ...dateUpdates,
+          section: targetSection,
+          status: sectionToClientStatus(targetSection),
+          remarks: [newRemark, ...(c.remarks || [])],
+          updatedAt: nowIso,
+        };
+      })
+    );
+
+    logActivity(
+      'client',
+      'Client Section Moved',
+      `Moved ${old.name} to ${CLIENT_SECTION_LABELS[targetSection]}. Remark: ${trimmedRemark}`
+    );
+  };
+
+  const addClientRemark = (id: string, text: string) => {
+    if (!canManageClients) return;
+    const trimmed = text.trim();
+    if (trimmed.length < 3 || trimmed.length > 500) return;
+
     const target = clients.find((c) => c.id === id);
-    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
-    logActivity('client', 'Client Moved to Trash', `Moved client ${target?.name || id} to Trash`);
+    if (!target) return;
+
+    const sec = getClientSection(target);
+    const nowIso = new Date().toISOString();
+    const newRemark: ClientRemark = {
+      id: `crem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      clientId: id,
+      section: sec,
+      text: trimmed,
+      authorUserId: currentUser.id,
+      authorName: currentUser.name,
+      authorRole: currentUser.role,
+      createdAt: nowIso,
+    };
+
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              remarks: [newRemark, ...(c.remarks || [])],
+              updatedAt: nowIso,
+            }
+          : c
+      )
+    );
+    logActivity('client', 'Client Remark Added', `Added remark on ${target.name}`);
+  };
+
+  const deleteClient = (id: string, reason: string) => {
+    if (currentUser.role !== 'admin') return;
+    const trimmedReason = (reason || '').trim();
+    if (trimmedReason.length < 3) return;
+
+    const target = clients.find((c) => c.id === id);
+    if (!target) return;
+
+    const sec = getClientSection(target);
+    const nowIso = new Date().toISOString();
+    const deleteRemark: ClientRemark = {
+      id: `crem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      clientId: id,
+      section: sec,
+      text: `[Moved to Trash] ${trimmedReason}`,
+      authorUserId: currentUser.id,
+      authorName: currentUser.name,
+      authorRole: currentUser.role,
+      createdAt: nowIso,
+    };
+
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              deletedAt: nowIso,
+              deleteReason: trimmedReason,
+              remarks: [deleteRemark, ...(c.remarks || [])],
+              updatedAt: nowIso,
+            }
+          : c
+      )
+    );
+    logActivity(
+      'client',
+      'Client Moved to Trash',
+      `Moved client ${target.name} to Trash (30 days). Reason: ${trimmedReason}`
+    );
   };
 
   const restoreClient = (id: string) => {
     if (currentUser.role !== 'admin') return;
-    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, deletedAt: undefined } : c)));
-    logActivity('client', 'Client Restored', `Restored client ID ${id}`);
+    const target = clients.find((c) => c.id === id);
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? { ...c, deletedAt: undefined, deleteReason: undefined, updatedAt: new Date().toISOString() }
+          : c
+      )
+    );
+    logActivity('client', 'Client Restored', `Restored client ${target?.name || id} from Trash`);
   };
 
-  const bulkImportClients = (newItems: Partial<Client>[]): number => {
+  const bulkImportClients = (newItems: Array<Partial<Client> & { latestRemark?: string }>): number => {
+    if (!canManageClients) return 0;
     let imported = 0;
     const toAdd: Client[] = [];
+    const seenNames = new Set(clients.map((c) => c.name.trim().toLowerCase()));
+    const todayStr = new Date().toISOString().slice(0, 10);
+
     newItems.forEach((item) => {
-      if (item.name) {
+      const cleanName = (item.name || '').trim();
+      if (cleanName && !seenNames.has(cleanName.toLowerCase())) {
+        seenNames.add(cleanName.toLowerCase());
+        const clientId = `cli_bulk_${Date.now()}_${imported}`;
+        const rawSec = String(item.section || item.status || 'Green').trim().toLowerCase();
+        let sec: ClientSection = 'Green';
+        if (rawSec.includes('blue') || rawSec.includes('discussion') || rawSec.includes('prospect')) {
+          sec = 'Blue';
+        } else if (rawSec.includes('red') || rawSec.includes('enquir') || rawSec.includes('inactive')) {
+          sec = 'Red';
+        }
+
+        const nowIso = new Date().toISOString();
+        const remarkStr = (item.latestRemark || '').trim();
+        const remarksList: ClientRemark[] =
+          remarkStr.length >= 3
+            ? [
+                {
+                  id: `crem_bulk_${Date.now()}_${imported}`,
+                  clientId,
+                  section: sec,
+                  text: remarkStr.slice(0, 500),
+                  authorUserId: currentUser.id,
+                  authorName: currentUser.name,
+                  authorRole: currentUser.role,
+                  createdAt: nowIso,
+                },
+              ]
+            : [];
+
         toAdd.push({
-          id: `cli_bulk_${Date.now()}_${imported}`,
-          name: item.name,
-          industry: item.industry || 'Information Technology',
-          address: item.address || 'Sector 62',
-          city: item.city || 'Noida',
-          website: item.website || 'https://example.com',
-          contactPersons: item.contactPersons || [{ id: 'cp_1', name: 'HR Head', designation: 'HR', phone: '+91 98110 00000', email: 'hr@example.com' }],
-          agreementDetails: item.agreementDetails || 'Standard SLA',
+          id: clientId,
+          name: cleanName,
+          industry: (item.industry || 'Information Technology & Services').trim(),
+          address: (item.address || 'Corporate Office').trim(),
+          city: (item.city || 'Noida').trim(),
+          website: (item.website || 'https://example.com').trim(),
+          contactPersons: item.contactPersons || [
+            {
+              id: `cp_${Date.now()}_${imported}`,
+              name: 'HR Head',
+              designation: 'HR Manager',
+              phone: '+91 98110 00000',
+              email: 'hr@example.com',
+            },
+          ],
+          agreementDetails: (item.agreementDetails || 'Standard SLA').trim(),
           commissionPercent: Number(item.commissionPercent) || 8.33,
-          paymentTerms: item.paymentTerms || '30 days net',
-          status: 'Active',
-          createdAt: new Date().toISOString(),
+          paymentTerms: (item.paymentTerms || '30 days net').trim(),
+          section: sec,
+          status: sectionToClientStatus(sec),
+          enquiryDate: item.enquiryDate || todayStr,
+          lastContactedDate: item.lastContactedDate || (sec !== 'Red' ? todayStr : undefined),
+          nextFollowUpDate: item.nextFollowUpDate || undefined,
+          agreementSignedDate: item.agreementSignedDate || (sec === 'Green' ? todayStr : undefined),
+          remarks: remarksList,
+          createdAt: nowIso,
+          updatedAt: nowIso,
           assignedAccountManagerId: currentUser.id,
           assignedAccountManagerName: currentUser.name,
           activeJobsCount: 0,
@@ -1442,36 +1648,43 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReassignmentTargetUser(null);
   };
 
-  // Firebase config
-  const saveFirebaseSettings = (cfg: FirebaseConfigOptions) => {
-    saveFirebaseConfig(cfg);
-    setFirebaseConfig(cfg);
-    const s = initializeFirebaseServices(cfg);
-    setIsFirebaseConfigured(s.isConfigured);
-    logActivity('system', 'Firebase Connected', `Connected live Firebase project: ${cfg.projectId}`);
-  };
-
-  const removeFirebaseSettings = () => {
-    clearFirebaseConfig();
-    setFirebaseConfig(null);
-    setIsFirebaseConfigured(false);
-    logActivity('system', 'Firebase Disconnected', 'Disconnected external Firebase credentials');
-  };
+  // Demo Mode Data Controls (via single dataService)
+  const saveFirebaseSettings = (_cfg: FirebaseConfigOptions) => {};
+  const removeFirebaseSettings = () => {};
 
   const resetAllData = () => {
     if (currentUser.role !== 'admin') return;
-    setClients([]);
-    setJobs([]);
-    setCandidates([]);
-    setPipeline([]);
-    setInterviews([]);
-    setActivities([]);
-    setReminders([]);
+    const restored = dataService.resetToDemoSeedData();
+    setUsers(restored.users);
+    setCompanySettings(restored.companySettings);
+    setClients(restored.clients);
+    setJobs(restored.jobs);
+    setCandidates(restored.candidates);
+    setPipeline(restored.pipeline);
+    setInterviews(restored.interviews);
+    setReminders(restored.reminders);
+    setActivities(restored.activities);
     setEditHistories([]);
     setReadNotifIds([]);
     setExportLogs([]);
     setImportLogs([]);
-    logActivity('system', 'Database Cleared', 'Cleared all CRM records for a fresh workspace');
+    logActivity('system', 'Demo Data Reset', 'Restored sample seed dataset');
+  };
+
+  const downloadDemoData = () => {
+    if (currentUser.role !== 'admin') return;
+    const jsonString = dataService.exportAllDemoDataAsJson();
+    const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    link.href = url;
+    link.download = `bj-bright-crm-demo-data-${dateStr}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    logActivity('system', 'Demo Data Downloaded', 'Downloaded JSON snapshot of demo data');
   };
 
   return (
@@ -1517,6 +1730,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         trashClients,
         addClient,
         updateClient,
+        moveClientSection,
+        addClientRemark,
         deleteClient,
         restoreClient,
         bulkImportClients,
@@ -1573,6 +1788,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveFirebaseSettings,
         removeFirebaseSettings,
         resetAllData,
+        downloadDemoData,
       }}
     >
       {children}

@@ -36,11 +36,14 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
   onNavigateToPipeline,
   onViewCandidateProfile,
 }) => {
-  const { visibleJobs, deleteJob, canDeleteClientOrJob, pipeline, currentUser } = useCRM();
+  const { visibleJobs, visibleClients, updateJob, deleteJob, canDeleteClientOrJob, pipeline, currentUser } = useCRM();
 
   const [search, setSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('Open');
   const [selectedPriority, setSelectedPriority] = useState<string>('All');
+  const [selectedClientSection, setSelectedClientSection] = useState<'All' | 'Green' | 'Blue'>('All');
+  const [editingJdJobId, setEditingJdJobId] = useState<string | null>(null);
+  const [jdDraft, setJdDraft] = useState<string>('');
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -49,6 +52,31 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
   const [reminderJob, setReminderJob] = useState<JobOpening | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  const canEditJobJd =
+    currentUser.role === 'admin' ||
+    currentUser.role === 'manager' ||
+    currentUser.role === 'hr_executive';
+
+  const getJobCompanySection = (job: JobOpening): 'Green' | 'Blue' | 'Red' => {
+    const client = visibleClients.find(
+      (c) => c.id === job.clientId || c.name.toLowerCase() === job.clientName.toLowerCase()
+    );
+    if (!client) return 'Green';
+    if (client.section === 'Green' || client.status === 'Active') return 'Green';
+    if (client.section === 'Blue' || client.status === 'Prospect') return 'Blue';
+    return 'Red';
+  };
+
+  const activeClientJobsCount = useMemo(
+    () => visibleJobs.filter((j) => getJobCompanySection(j) === 'Green').length,
+    [visibleJobs, visibleClients]
+  );
+
+  const inDiscussionJobsCount = useMemo(
+    () => visibleJobs.filter((j) => getJobCompanySection(j) === 'Blue').length,
+    [visibleJobs, visibleClients]
+  );
 
   // Filtered jobs
   const filteredJobs = useMemo(() => {
@@ -59,15 +87,19 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
         j.title.toLowerCase().includes(q) ||
         j.clientName.toLowerCase().includes(q) ||
         j.location.toLowerCase().includes(q) ||
+        (j.description && j.description.toLowerCase().includes(q)) ||
         j.skillsRequired.some((s) => s.toLowerCase().includes(q));
 
       if (!matchesSearch) return false;
       if (selectedStatus !== 'All' && j.status !== selectedStatus) return false;
       if (selectedPriority !== 'All' && j.priority !== selectedPriority) return false;
+      if (selectedClientSection !== 'All' && getJobCompanySection(j) !== selectedClientSection) {
+        return false;
+      }
 
       return true;
     });
-  }, [visibleJobs, search, selectedStatus, selectedPriority]);
+  }, [visibleJobs, visibleClients, search, selectedStatus, selectedPriority, selectedClientSection]);
 
   const handleExportCSV = () => {
     if (filteredJobs.length === 0) {
@@ -125,10 +157,10 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-[#F5A623]" />
-            Job Openings & Client Mandates
+            Open Job Mandates & Client Requisitions
           </h2>
           <p className="text-xs text-slate-500">
-            {filteredJobs.length} active requisitions open for talent matching
+            {filteredJobs.length} open mandates across Active Clients ({activeClientJobsCount}) & In Discussion ({inDiscussionJobsCount})
           </p>
         </div>
 
@@ -164,13 +196,70 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
         </div>
       </div>
 
+      {/* Section Filter Tabs: All vs Active Clients (Green) vs In Discussion (Blue) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button
+          type="button"
+          onClick={() => setSelectedClientSection('All')}
+          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+            selectedClientSection === 'All'
+              ? 'bg-[#0B1F4B] text-white border-[#0B1F4B] shadow-md'
+              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-800 hover:border-slate-400'
+          }`}
+        >
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider opacity-80">All Mandates</p>
+            <p className="text-xs font-semibold mt-0.5">Active + In Discussion Companies</p>
+          </div>
+          <span className="text-2xl font-extrabold">{visibleJobs.length}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSelectedClientSection('Green')}
+          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+            selectedClientSection === 'Green'
+              ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+              : 'bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800/70 hover:border-emerald-400'
+          }`}
+        >
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <p className="text-[11px] font-extrabold uppercase tracking-wider">Active Clients (Green)</p>
+            </div>
+            <p className="text-xs font-medium mt-0.5 opacity-90">Smile India, BJ Bright, MyMoneyMantra</p>
+          </div>
+          <span className="text-2xl font-extrabold">{activeClientJobsCount}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSelectedClientSection('Blue')}
+          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+            selectedClientSection === 'Blue'
+              ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+              : 'bg-blue-50/70 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 border-blue-200 dark:border-blue-800/70 hover:border-blue-400'
+          }`}
+        >
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <p className="text-[11px] font-extrabold uppercase tracking-wider">In Discussion (Blue)</p>
+            </div>
+            <p className="text-xs font-medium mt-0.5 opacity-90">Tyariexamki, Perfect Capital, Debt & Dues, NN Pure Herbs, etc.</p>
+          </div>
+          <span className="text-2xl font-extrabold">{inDiscussionJobsCount}</span>
+        </button>
+      </div>
+
       {/* Search and Filters */}
       <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row gap-3 items-center">
         <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by role title, client name, skills, or location..."
+            placeholder="Search by role title, client name, JD details, skills, or location..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
@@ -211,18 +300,30 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
         ) : (
           filteredJobs.map((job) => {
             const pipelineCountForJob = pipeline.filter((p) => p.jobId === job.id).length;
+            const companySection = getJobCompanySection(job);
 
             return (
               <div
                 key={job.id}
-                className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs hover:border-[#0B1F4B] dark:hover:border-amber-500 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+                className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs hover:border-[#0B1F4B] dark:hover:border-amber-500 transition-all flex flex-col lg:flex-row lg:items-start justify-between gap-4"
               >
-                {/* Left: Role Info & Badges */}
-                <div className="flex-1 min-w-0 space-y-2">
+                {/* Left: Role Info, JD & Badges */}
+                <div className="flex-1 min-w-0 space-y-2.5">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-base font-bold text-slate-900 dark:text-white">
                       {job.title}
                     </h3>
+                    {companySection === 'Green' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        Active Client (Green)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        In Discussion (Blue)
+                      </span>
+                    )}
                     <Badge
                       variant={
                         job.priority === 'High'
@@ -241,7 +342,7 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                    <div className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
+                    <div className="flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200">
                       <Building2 className="w-3.5 h-3.5 text-[#F5A623]" />
                       <span>{job.clientName}</span>
                     </div>
@@ -273,8 +374,66 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
                     )}
                   </div>
 
+                  {/* Full Job Description (JD) Block with quick inline Edit */}
+                  <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/80 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                        Job Description (JD) & Mandate Details
+                      </span>
+                      {canEditJobJd && editingJdJobId !== job.id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingJdJobId(job.id);
+                            setJdDraft(job.description || '');
+                          }}
+                          className="text-[11px] font-bold text-blue-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit className="w-3 h-3" />
+                          <span>Edit JD</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {editingJdJobId === job.id ? (
+                      <div className="space-y-2 pt-1">
+                        <textarea
+                          rows={3}
+                          value={jdDraft}
+                          onChange={(e) => setJdDraft(e.target.value)}
+                          placeholder="Enter complete Job Description, salary, shift timing, location, and HR contact..."
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-blue-400 dark:border-amber-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none"
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingJdJobId(null)}
+                            className="px-2.5 py-1 rounded text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateJob(job.id, { description: jdDraft.trim() });
+                              setEditingJdJobId(null);
+                            }}
+                            className="px-3 py-1 rounded bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#F5A623]" />
+                            <span>Save JD</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed">
+                        {job.description || 'No JD added yet. Click Edit JD to add requirements.'}
+                      </p>
+                    )}
+                  </div>
+
                   {/* Skills tags */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
                     {job.skillsRequired.map((skill) => (
                       <span
                         key={skill}
@@ -323,7 +482,7 @@ export const JobsModule: React.FC<JobsModuleProps> = ({
                         setIsFormOpen(true);
                       }}
                       className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
-                      title="Edit Requisition"
+                      title="Edit Full Requisition"
                     >
                       <Edit className="w-4 h-4" />
                     </button>

@@ -98,17 +98,22 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
   ];
 
   const clientFields: ColumnMappingField[] = [
-    { key: 'name', label: 'Company / Client Name', required: true, example: 'HCL Technologies' },
+    { key: 'name', label: 'Company Name', required: true, example: 'HCL Technologies' },
     { key: 'industry', label: 'Industry Sector', example: 'Information Technology & Services' },
-    { key: 'city', label: 'Location / City', required: true, example: 'Noida' },
+    { key: 'city', label: 'City', required: true, example: 'Noida' },
     { key: 'address', label: 'Corporate Address', example: 'Plot 3A, Sector 126' },
     { key: 'website', label: 'Website URL', example: 'https://www.hcltech.com' },
     { key: 'contactName', label: 'Primary Contact Person', example: 'Vikas Malhotra' },
     { key: 'contactEmail', label: 'Contact Email', example: 'vikas.m@hcl.com' },
-    { key: 'contactPhone', label: 'Contact Phone', example: '+91 98101 23456' },
+    { key: 'contactPhone', label: 'Contact Phone', example: '9810123456' },
     { key: 'commissionPercent', label: 'Commission Fee %', example: '8.33' },
     { key: 'paymentTerms', label: 'Payment Terms', example: '30 days net' },
-    { key: 'status', label: 'Account Status', example: 'Active' },
+    { key: 'section', label: 'Section', example: 'Green / Blue / Red' },
+    { key: 'enquiryDate', label: 'Enquiry Date', example: '2026-09-01' },
+    { key: 'lastContactedDate', label: 'Last Contacted', example: '2026-09-10' },
+    { key: 'nextFollowUpDate', label: 'Next Follow-up', example: '2026-11-15' },
+    { key: 'agreementSignedDate', label: 'Agreement Signed Date', example: '2026-09-15' },
+    { key: 'latestRemark', label: 'Latest Remark', example: 'Agreement signed for Q4 mandates' },
   ];
 
   const jobFields: ColumnMappingField[] = [
@@ -358,7 +363,7 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
           .filter((r) => r.isValid)
           .map((r) => ({
             name: r.data.name,
-            industry: r.data.industry || 'Information Technology',
+            industry: r.data.industry || 'Information Technology & Services',
             city: r.data.city || 'Noida',
             address: r.data.address || 'Corporate Park',
             website: r.data.website || 'https://example.com',
@@ -368,14 +373,19 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
                     id: `cp_${Date.now()}`,
                     name: r.data.contactName,
                     designation: 'HR Lead',
-                    phone: r.data.contactPhone || '+91 98110 00000',
+                    phone: r.data.contactPhone || '9811000000',
                     email: r.data.contactEmail || 'hr@client.com',
                   },
                 ]
               : [],
             commissionPercent: Number(r.data.commissionPercent) || 8.33,
             paymentTerms: r.data.paymentTerms || '30 days net',
-            status: (r.data.status as any) || 'Active',
+            section: (r.data.section as any) || 'Green',
+            enquiryDate: r.data.enquiryDate || undefined,
+            lastContactedDate: r.data.lastContactedDate || undefined,
+            nextFollowUpDate: r.data.nextFollowUpDate || undefined,
+            agreementSignedDate: r.data.agreementSignedDate || undefined,
+            latestRemark: r.data.latestRemark || undefined,
           }));
 
         added = bulkImportClients(validClients);

@@ -23,13 +23,22 @@ import {
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import { NavItem } from './Sidebar';
+import { Client } from '../../types/crm';
+import {
+  useDebouncedValue,
+  searchCompanies,
+  getLatestClientRemark,
+  getSectionBadgeMeta,
+  HighlightMatch,
+} from '../../lib/companySearch';
 
 interface HeaderProps {
   onOpenMobileSidebar: () => void;
   onNavigate: (tab: NavItem) => void;
   onOpenAddCandidate: () => void;
   onOpenAddJob: () => void;
-  onOpenAddClient: () => void;
+  onOpenAddClient: (initialName?: string) => void;
+  onOpenClientProfile?: (client: Client) => void;
   onOpenScheduleInterview: () => void;
   onOpenFirebaseModal: () => void;
   onLogout?: () => void;
@@ -41,6 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAddCandidate,
   onOpenAddJob,
   onOpenAddClient,
+  onOpenClientProfile,
   onOpenScheduleInterview,
   onOpenFirebaseModal,
   onLogout,
@@ -50,29 +60,59 @@ export const Header: React.FC<HeaderProps> = ({
     changeMyPassword,
     isDarkMode,
     toggleDarkMode,
-    candidates,
-    jobs,
-    clients,
+    visibleCandidates,
+    visibleJobs,
+    visibleClients,
+    setGlobalSearch,
     notifications,
     unreadNotificationCount,
     markNotificationRead,
     clearAllNotifications,
   } = useCRM();
 
+  const canManageClients =
+    currentUser.role === 'admin' ||
+    currentUser.role === 'manager' ||
+    currentUser.role === 'hr_executive';
+
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [passwordSavedMsg, setPasswordSavedMsg] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(searchQuery, 200);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
   const quickAddRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  // Pressing "/" anywhere (when not typing in an input/textarea/select) focuses the global search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      searchInputRef.current?.focus();
+      setIsSearchOpen(true);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Close popovers on click outside
   useEffect(() => {
@@ -94,26 +134,33 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredCandidates = searchQuery.trim()
-    ? candidates.filter(
-        (c) =>
-          c.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.phone.includes(searchQuery) ||
-          c.skills.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : [];
+  const activeQuery = debouncedQuery.trim();
 
-  const filteredJobs = searchQuery.trim()
-    ? jobs.filter(
-        (j) =>
-          j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          j.clientName.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : [];
+  const filteredClients = React.useMemo(() => {
+    if (!activeQuery) return [];
+    return searchCompanies(visibleClients, activeQuery);
+  }, [visibleClients, activeQuery]);
 
-  const filteredClients = searchQuery.trim()
-    ? clients.filter((cl) => cl.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : [];
+  const filteredCandidates = React.useMemo(() => {
+    if (!activeQuery) return [];
+    const q = activeQuery.toLowerCase();
+    return visibleCandidates.filter(
+      (c) =>
+        c.fullName.toLowerCase().includes(q) ||
+        c.phone.includes(activeQuery) ||
+        c.skills.some((s) => s.toLowerCase().includes(q))
+    );
+  }, [visibleCandidates, activeQuery]);
+
+  const filteredJobs = React.useMemo(() => {
+    if (!activeQuery) return [];
+    const q = activeQuery.toLowerCase();
+    return visibleJobs.filter(
+      (j) =>
+        j.title.toLowerCase().includes(q) ||
+        j.clientName.toLowerCase().includes(q)
+    );
+  }, [visibleJobs, activeQuery]);
 
   return (
     <header className="sticky top-0 z-30 h-18 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4 shadow-xs">
@@ -132,6 +179,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative flex items-center">
             <Search className="absolute left-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => {
@@ -139,14 +187,133 @@ export const Header: React.FC<HeaderProps> = ({
                 setIsSearchOpen(true);
               }}
               onFocus={() => setIsSearchOpen(true)}
-              placeholder="Search candidates, skills, clients, or jobs..."
-              className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B] transition-all"
+              placeholder="Search companies, candidates, or jobs... (Press '/' to focus)"
+              className="w-full pl-10 pr-8 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B] transition-all"
             />
+            {!searchQuery && (
+              <kbd className="hidden sm:inline-flex absolute right-2.5 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded">
+                /
+              </kbd>
+            )}
           </div>
 
           {/* Search Dropdown Results */}
-          {isSearchOpen && searchQuery.trim().length > 0 && (
-            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 max-h-96 overflow-y-auto space-y-3">
+          {isSearchOpen && activeQuery.length > 0 && (
+            <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 max-h-[28rem] overflow-y-auto space-y-3">
+              {/* Companies Section */}
+              <div>
+                <div className="flex items-center justify-between px-2 mb-1.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Companies ({filteredClients.length})
+                  </p>
+                  {filteredClients.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGlobalSearch(activeQuery);
+                        onNavigate('clients');
+                        setIsSearchOpen(false);
+                      }}
+                      className="text-[11px] font-bold text-blue-600 dark:text-amber-400 hover:underline cursor-pointer"
+                    >
+                      See all results ({filteredClients.length})
+                    </button>
+                  )}
+                </div>
+
+                {filteredClients.length > 0 ? (
+                  <div className="space-y-1">
+                    {filteredClients.slice(0, 8).map((cl) => {
+                      const badge = getSectionBadgeMeta(cl);
+                      const mainContact = cl.contactPersons?.[0];
+                      const latestRemark = getLatestClientRemark(cl);
+
+                      return (
+                        <button
+                          key={cl.id}
+                          type="button"
+                          onClick={() => {
+                            if (onOpenClientProfile) {
+                              onOpenClientProfile(cl);
+                            } else {
+                              setGlobalSearch(cl.name);
+                              onNavigate('clients');
+                            }
+                            setIsSearchOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-start justify-between gap-2 text-xs transition-colors cursor-pointer"
+                        >
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-900 dark:text-white truncate">
+                                <HighlightMatch text={cl.name} query={activeQuery} />
+                              </span>
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.badgeClass}`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
+                                {badge.label}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              <HighlightMatch text={cl.city} query={activeQuery} /> • Contact:{' '}
+                              <HighlightMatch
+                                text={mainContact?.name || '-'}
+                                query={activeQuery}
+                              />
+                              {mainContact?.phone ? (
+                                <>
+                                  {' '}
+                                  (<HighlightMatch text={mainContact.phone} query={activeQuery} />)
+                                </>
+                              ) : null}
+                            </p>
+                            {latestRemark && (
+                              <p className="text-[10px] text-slate-400 truncate">
+                                Remark: <HighlightMatch text={latestRemark} query={activeQuery} />
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+
+                    {filteredClients.length > 8 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGlobalSearch(activeQuery);
+                          onNavigate('clients');
+                          setIsSearchOpen(false);
+                        }}
+                        className="w-full py-1.5 text-center text-xs font-bold text-blue-600 dark:text-amber-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-lg transition-colors cursor-pointer"
+                      >
+                        See all results ({filteredClients.length} companies)
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between gap-2 text-xs">
+                    <span className="text-slate-500">
+                      No company found for "{activeQuery}"
+                    </span>
+                    {canManageClients && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSearchOpen(false);
+                          onOpenAddClient(activeQuery);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white text-[11px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3 text-[#F5A623]" />
+                        <span>Add this company</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {filteredCandidates.length > 0 && (
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1">
@@ -156,16 +323,22 @@ export const Header: React.FC<HeaderProps> = ({
                     {filteredCandidates.slice(0, 5).map((cand) => (
                       <button
                         key={cand.id}
+                        type="button"
                         onClick={() => {
                           onNavigate('candidates');
                           setIsSearchOpen(false);
                           setSearchQuery('');
                         }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-xs transition-colors"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-xs transition-colors cursor-pointer"
                       >
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-white">{cand.fullName}</p>
-                          <p className="text-[10px] text-slate-500">{cand.phone} • {cand.skills.slice(0, 3).join(', ')}</p>
+                          <p className="font-bold text-slate-900 dark:text-white">
+                            <HighlightMatch text={cand.fullName} query={activeQuery} />
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            <HighlightMatch text={cand.phone} query={activeQuery} /> •{' '}
+                            {cand.skills.slice(0, 3).join(', ')}
+                          </p>
                         </div>
                         <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                           {cand.status}
@@ -185,54 +358,26 @@ export const Header: React.FC<HeaderProps> = ({
                     {filteredJobs.slice(0, 4).map((job) => (
                       <button
                         key={job.id}
+                        type="button"
                         onClick={() => {
                           onNavigate('jobs');
                           setIsSearchOpen(false);
                           setSearchQuery('');
                         }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-xs transition-colors"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-xs transition-colors cursor-pointer"
                       >
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-white">{job.title}</p>
-                          <p className="text-[10px] text-slate-500">{job.clientName} • {job.location}</p>
+                          <p className="font-bold text-slate-900 dark:text-white">
+                            <HighlightMatch text={job.title} query={activeQuery} />
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            <HighlightMatch text={job.clientName} query={activeQuery} /> • {job.location}
+                          </p>
                         </div>
                         <span className="text-[10px] font-bold text-amber-600">₹{job.salaryMaxLPA} LPA</span>
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {filteredClients.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1">
-                    Clients ({filteredClients.length})
-                  </p>
-                  <div className="space-y-1">
-                    {filteredClients.slice(0, 4).map((cl) => (
-                      <button
-                        key={cl.id}
-                        onClick={() => {
-                          onNavigate('clients');
-                          setIsSearchOpen(false);
-                          setSearchQuery('');
-                        }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between text-xs transition-colors"
-                      >
-                        <div>
-                          <p className="font-bold text-slate-900 dark:text-white">{cl.name}</p>
-                          <p className="text-[10px] text-slate-500">{cl.industry} • {cl.city}</p>
-                        </div>
-                        <span className="text-[10px] font-bold text-emerald-600">{cl.status}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {filteredCandidates.length === 0 && filteredJobs.length === 0 && filteredClients.length === 0 && (
-                <div className="py-6 text-center text-xs text-slate-400">
-                  No records found matching "{searchQuery}"
                 </div>
               )}
             </div>
@@ -275,16 +420,18 @@ export const Header: React.FC<HeaderProps> = ({
                 <Briefcase className="w-4 h-4 text-purple-600" />
                 <span>+ Post Job Opening</span>
               </button>
-              <button
-                onClick={() => {
-                  onOpenAddClient();
-                  setIsQuickAddOpen(false);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Building2 className="w-4 h-4 text-amber-600" />
-                <span>+ Onboard Client</span>
-              </button>
+              {canManageClients && (
+                <button
+                  onClick={() => {
+                    onOpenAddClient();
+                    setIsQuickAddOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <Building2 className="w-4 h-4 text-amber-600" />
+                  <span>+ Onboard Client</span>
+                </button>
+              )}
               <button
                 onClick={() => {
                   onOpenScheduleInterview();

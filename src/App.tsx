@@ -21,11 +21,12 @@ import { ScheduleInterviewModal } from './components/interviews/ScheduleIntervie
 import { CandidateProfileModal } from './components/candidates/CandidateProfileModal';
 import { StatusRemarkModal } from './components/candidates/StatusRemarkModal';
 import { Candidate, Client } from './types/crm';
+import { dataService } from './lib/dataService';
 
 const CRMAppContent: React.FC = () => {
-  const { currentUser, activeStatusRemarkModal, closeStatusRemarkModal, submitStatusRemark } = useCRM();
+  const { currentUser, users, activeStatusRemarkModal, closeStatusRemarkModal, submitStatusRemark } = useCRM();
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('bj_logged_in') === 'true';
+    return dataService.isSessionLoggedIn();
   });
 
   const [currentTab, setCurrentTab] = useState<NavItem>('dashboard');
@@ -35,18 +36,36 @@ const CRMAppContent: React.FC = () => {
   const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false);
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+  const [addClientInitialName, setAddClientInitialName] = useState('');
   const [isScheduleInterviewOpen, setIsScheduleInterviewOpen] = useState(false);
 
   // Profile modal & preselected entities
   const [activeCandidateForProfile, setActiveCandidateForProfile] = useState<Candidate | null>(null);
   const [candidateToEdit, setCandidateToEdit] = useState<Candidate | null>(null);
+  const [selectedClientIdForProfile, setSelectedClientIdForProfile] = useState<string | undefined>();
 
   const [preSelectedJobIdForPipeline, setPreSelectedJobIdForPipeline] = useState<string | undefined>();
   const [preSelectedClientIdForJob, setPreSelectedClientIdForJob] = useState<string | undefined>();
   const [preSelectedCandidateForInterview, setPreSelectedCandidateForInterview] = useState<Candidate | null>(null);
 
+  // Instant sign-out if current session user was disabled or deleted
+  const sessionUserId = dataService.getSessionUserId();
+  const sessionUserRecord = users.find((u) => u.id === sessionUserId);
+  if (isLoggedIn && (!sessionUserRecord || !sessionUserRecord.active)) {
+    dataService.clearSession();
+    return (
+      <div className="min-h-screen flex flex-col">
+        <LoginScreen onLoginSuccess={() => setIsLoggedIn(true)} />
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
-    return <LoginScreen onLoginSuccess={() => setIsLoggedIn(true)} />;
+    return (
+      <div className="min-h-screen flex flex-col">
+        <LoginScreen onLoginSuccess={() => setIsLoggedIn(true)} />
+      </div>
+    );
   }
 
   const handleNavigate = (tab: NavItem) => {
@@ -90,14 +109,21 @@ const CRMAppContent: React.FC = () => {
             setPreSelectedClientIdForJob(undefined);
             setIsAddJobOpen(true);
           }}
-          onOpenAddClient={() => setIsAddClientOpen(true)}
+          onOpenAddClient={(initialName?: string) => {
+            setAddClientInitialName(initialName || '');
+            setIsAddClientOpen(true);
+          }}
+          onOpenClientProfile={(client: Client) => {
+            setSelectedClientIdForProfile(client.id);
+            setCurrentTab('clients');
+          }}
           onOpenScheduleInterview={() => {
             setPreSelectedCandidateForInterview(null);
             setIsScheduleInterviewOpen(true);
           }}
           onOpenFirebaseModal={() => {}}
           onLogout={() => {
-            localStorage.removeItem('bj_logged_in');
+            dataService.clearSession();
             setIsLoggedIn(false);
           }}
         />
@@ -119,7 +145,11 @@ const CRMAppContent: React.FC = () => {
           )}
 
           {currentTab === 'clients' && (
-            <ClientsModule onOpenCreateJobForClient={handleOpenCreateJobForClient} />
+            <ClientsModule
+              onOpenCreateJobForClient={handleOpenCreateJobForClient}
+              initialProfileClientId={selectedClientIdForProfile}
+              onClearInitialProfileClient={() => setSelectedClientIdForProfile(undefined)}
+            />
           )}
 
           {currentTab === 'jobs' && (
@@ -182,7 +212,17 @@ const CRMAppContent: React.FC = () => {
 
       <ClientFormModal
         isOpen={isAddClientOpen}
-        onClose={() => setIsAddClientOpen(false)}
+        onClose={() => {
+          setIsAddClientOpen(false);
+          setAddClientInitialName('');
+        }}
+        initialName={addClientInitialName}
+        onOpenExistingClient={(cl) => {
+          setIsAddClientOpen(false);
+          setAddClientInitialName('');
+          setSelectedClientIdForProfile(cl.id);
+          setCurrentTab('clients');
+        }}
       />
 
       <ScheduleInterviewModal

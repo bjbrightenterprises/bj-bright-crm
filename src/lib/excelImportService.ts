@@ -156,7 +156,12 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       { header: 'Contact Email', key: 'contactEmail', width: 26 },
       { header: 'Commission Fee %', key: 'commissionPercent', width: 18 },
       { header: 'Payment Terms', key: 'paymentTerms', width: 20 },
-      { header: 'Account Status', key: 'status', width: 18 },
+      { header: 'Section', key: 'section', width: 20 },
+      { header: 'Enquiry Date', key: 'enquiryDate', width: 18 },
+      { header: 'Last Contacted', key: 'lastContactedDate', width: 18 },
+      { header: 'Next Follow-up', key: 'nextFollowUpDate', width: 18 },
+      { header: 'Agreement Signed Date', key: 'agreementSignedDate', width: 22 },
+      { header: 'Latest Remark', key: 'latestRemark', width: 34 },
     ];
 
     dataSheet.addRow([
@@ -166,11 +171,16 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       'Plot 44, Electronic City, Sector 62',
       'https://www.infosys.com',
       'Deepak Chopra',
-      '+91 98112 00000',
+      '9811200000',
       'deepak.c@infosys.com',
       8.33,
       '30 days net',
-      'Active',
+      'Green',
+      '2026-09-01',
+      '2026-09-10',
+      '2026-11-15',
+      '2026-09-15',
+      'Agreement signed for Q4 hiring mandates.',
     ]);
 
     for (let r = 2; r <= 50; r++) {
@@ -182,7 +192,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       dataSheet.getCell(`K${r}`).dataValidation = {
         type: 'list',
         allowBlank: true,
-        formulae: ['"Active,Inactive,Prospect"'],
+        formulae: ['"Green,Blue,Red"'],
       };
     }
   } else {

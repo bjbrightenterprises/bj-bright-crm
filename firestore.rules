@@ -49,12 +49,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Clients collection
+    // Clients collection (all active users may read; Admin, Manager & HR Executive may create or update; only Admin may delete)
     match /clients/{clientId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isManager();
-      allow update: if isAuthenticated() && (isAdmin() || isManager());
+      allow read: if isAuthenticated() && isRecruiter();
+      allow create, update: if isHrExecutive();
       allow delete: if isAdmin();
+
+      match /remarks/{remarkId} {
+        allow read: if isAuthenticated() && isRecruiter();
+        allow create: if isHrExecutive() &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() >= 3 &&
+          request.resource.data.text.size() <= 500;
+        allow update, delete: if false;
+      }
     }
 
     // Job Openings collection

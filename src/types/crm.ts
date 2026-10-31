@@ -84,6 +84,24 @@ export interface ClientContactPerson {
 }
 
 export type ClientStatus = 'Active' | 'Inactive' | 'Prospect';
+export type ClientSection = 'Green' | 'Blue' | 'Red';
+
+export const CLIENT_SECTION_LABELS: Record<ClientSection, string> = {
+  Green: 'Active Clients',
+  Blue: 'In Discussion',
+  Red: 'New Enquiries',
+};
+
+export interface ClientRemark {
+  id: string;
+  clientId: string;
+  section: ClientSection;
+  text: string;
+  authorUserId: string;
+  authorName: string;
+  authorRole: string;
+  createdAt: string;
+}
 
 export interface Client {
   id: string;
@@ -97,12 +115,35 @@ export interface Client {
   commissionPercent: number;
   paymentTerms: string;
   status: ClientStatus;
+  section?: ClientSection;
+  enquiryDate?: string;
+  lastContactedDate?: string;
+  nextFollowUpDate?: string;
+  agreementSignedDate?: string;
+  remarks?: ClientRemark[];
   createdAt: string;
+  updatedAt?: string;
   assignedAccountManagerId: string;
   assignedAccountManagerName: string;
   activeJobsCount?: number;
   placedCandidatesCount?: number;
   deletedAt?: string; // For 30-day trash
+  deleteReason?: string;
+}
+
+export function getClientSection(client: { section?: ClientSection; status?: ClientStatus }): ClientSection {
+  if (client.section === 'Green' || client.section === 'Blue' || client.section === 'Red') {
+    return client.section;
+  }
+  if (client.status === 'Active') return 'Green';
+  if (client.status === 'Prospect') return 'Blue';
+  return 'Red';
+}
+
+export function sectionToClientStatus(section: ClientSection): ClientStatus {
+  if (section === 'Green') return 'Active';
+  if (section === 'Blue') return 'Prospect';
+  return 'Inactive';
 }
 
 export type JobPriority = 'High' | 'Medium' | 'Low';

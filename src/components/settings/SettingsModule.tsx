@@ -45,11 +45,14 @@ export const SettingsModule: React.FC = () => {
     saveFirebaseSettings,
     removeFirebaseSettings,
     resetAllData,
+    downloadDemoData,
     exportLogs,
     importLogs,
   } = useCRM();
 
   const [activeTab, setActiveTab] = useState<'users' | 'company' | 'masters' | 'firebase' | 'audit_logs'>('users');
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [resetSuccessNotice, setResetSuccessNotice] = useState(false);
 
 
   // Company form state
@@ -155,15 +158,35 @@ export const SettingsModule: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-          <Settings className="w-5 h-5 text-[#F5A623]" />
-          Settings, User Roles & System Configuration
-        </h2>
-        <p className="text-xs text-slate-500">
-          Manage team members, RBAC permission table, Noida office details, and system administration
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <Settings className="w-5 h-5 text-[#F5A623]" />
+            Settings, User Roles & System Configuration
+          </h2>
+          <p className="text-xs text-slate-500">
+            Manage staff accounts, RBAC permissions, Noida office details, and CRM data backup
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={downloadDemoData}
+            className="px-3.5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer"
+          >
+            <ArrowDownToLine className="w-4 h-4 text-[#F5A623]" />
+            <span>Backup CRM Data (JSON)</span>
+          </button>
+        </div>
       </div>
+
+      {resetSuccessNotice && (
+        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>Company & Mandate records synced (3 Active Clients, 6 In-Discussion Clients, 13 Open Job Mandates).</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 dark:border-slate-800 gap-1 overflow-x-auto">
@@ -212,7 +235,7 @@ export const SettingsModule: React.FC = () => {
           }`}
         >
           <Database className="w-3.5 h-3.5" />
-          <span>Firebase Sync</span>
+          <span>Data Backup & Storage</span>
         </button>
 
         {currentUser.role === 'admin' && (
@@ -388,28 +411,35 @@ export const SettingsModule: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                   <tr>
-                    <td className="py-2.5 px-3 font-medium">View All Records (Team Data)</td>
+                    <td className="py-2.5 px-3 font-medium">View Companies & Remarks Timeline</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes (All)</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes (All)</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes (All)</td>
+                    <td className="py-2.5 px-3 text-center text-blue-500 font-bold">Read-Only (All)</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 font-medium">Companies: Add, Edit, Move Section & Add Remarks</td>
                     <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
                     <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
-                    <td className="py-2.5 px-3 text-center text-rose-500">Assigned Only</td>
-                    <td className="py-2.5 px-3 text-center text-rose-500">Assigned Only</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
+                    <td className="py-2.5 px-3 text-center text-rose-500">No</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 font-medium">View Candidates, Pipeline & Interviews</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes (All)</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes (All)</td>
+                    <td className="py-2.5 px-3 text-center text-amber-600 font-semibold">Assigned Only</td>
+                    <td className="py-2.5 px-3 text-center text-amber-600 font-semibold">Assigned Only</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-3 font-medium">Create & Assign Tasks</td>
-                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes (Anyone)</td>
                     <td className="py-2.5 px-3 text-center text-rose-500">No</td>
-                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
+                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes (Recruiters)</td>
                     <td className="py-2.5 px-3 text-center text-rose-500">No</td>
                   </tr>
                   <tr>
-                    <td className="py-2.5 px-3 font-medium">Edit Records (Mandatory Reason)</td>
-                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
-                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
-                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
-                    <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Yes</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-3 font-medium">Delete Records (Trash / Restore)</td>
+                    <td className="py-2.5 px-3 font-medium">Delete Companies / Records (30-Day Trash & Restore)</td>
                     <td className="py-2.5 px-3 text-center text-emerald-500 font-bold">Admin Only</td>
                     <td className="py-2.5 px-3 text-center text-rose-500">No</td>
                     <td className="py-2.5 px-3 text-center text-rose-500">No</td>
@@ -702,115 +732,54 @@ export const SettingsModule: React.FC = () => {
         </div>
       )}
 
-      {/* Tab 4: Firebase & Database Administration */}
+      {/* Tab 4: Data Backup & Storage Administration */}
       {activeTab === 'firebase' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!fbApiKey.trim() || !fbProjectId.trim()) return;
-              saveFirebaseSettings({
-                apiKey: fbApiKey.trim(),
-                projectId: fbProjectId.trim(),
-                appId: fbAppId.trim(),
-                authDomain: `${fbProjectId.trim()}.firebaseapp.com`,
-                storageBucket: `${fbProjectId.trim()}.appspot.com`,
-              });
-            }}
-            className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 space-y-4"
-          >
+          <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                   <Database className="w-4 h-4 text-[#F5A623]" />
-                  <span>Firebase Cloud Configuration</span>
+                  <span>Full CRM Data Backup (JSON)</span>
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Connect your organization&apos;s Firebase Firestore project
+                  Persistent data service active (`src/lib/dataService.ts`)
                 </p>
               </div>
-              <span
-                className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                  isFirebaseConfigured
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                }`}
-              >
-                {isFirebaseConfigured ? 'Firebase Connected' : 'Local Persistence Active'}
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                PRODUCTION LIVE
               </span>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Firebase Project ID *</label>
-                <input
-                  type="text"
-                  value={fbProjectId}
-                  onChange={(e) => setFbProjectId(e.target.value)}
-                  placeholder="e.g. bj-bright-crm-prod"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Firebase Web API Key *</label>
-                <input
-                  type="password"
-                  value={fbApiKey}
-                  onChange={(e) => setFbApiKey(e.target.value)}
-                  placeholder="AIzaSy..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Firebase App ID</label>
-                <input
-                  type="text"
-                  value={fbAppId}
-                  onChange={(e) => setFbAppId(e.target.value)}
-                  placeholder="1:1234567890:web:abcdef"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                />
-              </div>
-            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Export all CRM records (candidates, companies across Green/Blue/Red sections, open job mandates, pipeline, interviews, tasks, and edit histories) as a portable JSON backup file.
+            </p>
 
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold cursor-pointer"
-              >
-                Save & Connect Firebase
-              </button>
-              {isFirebaseConfigured && (
-                <button
-                  type="button"
-                  onClick={removeFirebaseSettings}
-                  className="px-4 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold cursor-pointer"
-                >
-                  Disconnect
-                </button>
-              )}
-            </div>
-          </form>
+            <button
+              type="button"
+              onClick={downloadDemoData}
+              className="px-4 py-2.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold flex items-center gap-2 cursor-pointer"
+            >
+              <ArrowDownToLine className="w-4 h-4 text-[#F5A623]" />
+              <span>Download Full Backup (JSON)</span>
+            </button>
+          </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 space-y-4">
             <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-              <RotateCcw className="w-4 h-4 text-rose-500" />
-              <span>Workspace Data Administration</span>
+              <RotateCcw className="w-4 h-4 text-blue-600" />
+              <span>Restore Default Companies & Job Mandates</span>
             </h3>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Clear all candidates, clients, job requisitions, pipeline items, interviews, and tasks to start with a fresh empty database. Your Admin account and Company Profile settings will be preserved.
+              Ensure all 3 Active (Green) companies, 6 In-Discussion (Blue) companies, and 13 Open Job Mandates are synced with their complete JDs and HR contacts.
             </p>
             <button
               type="button"
-              onClick={() => {
-                if (confirm('Are you sure you want to clear all CRM records (Candidates, Clients, Jobs, Pipeline, Interviews, Tasks)? Team accounts and Company settings will remain intact.')) {
-                  resetAllData();
-                }
-              }}
-              className="px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-2 cursor-pointer"
+              onClick={() => setIsResetConfirmOpen(true)}
+              className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-2 cursor-pointer"
             >
-              <Trash2 className="w-4 h-4" />
-              <span>Clear All Workspace Records</span>
+              <RotateCcw className="w-4 h-4" />
+              <span>Sync Company & Mandate Defaults</span>
             </button>
           </div>
         </div>
@@ -1108,6 +1077,49 @@ export const SettingsModule: React.FC = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Reset Demo Data Confirmation Modal */}
+      <Modal
+        isOpen={isResetConfirmOpen}
+        onClose={() => setIsResetConfirmOpen(false)}
+        title="Confirm Reset Demo Data"
+        maxWidth="md"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Restore Initial Demo Seed Dataset?</p>
+              <p className="mt-1 opacity-90 leading-relaxed">
+                This will overwrite current browser changes and restore the 22 sample candidates, 8 companies across Green/Blue/Red sections, 8 job openings, today&apos;s interviews, client follow-ups, and the 4 demo user accounts.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsResetConfirmOpen(false)}
+              className="px-4 py-2 rounded-lg font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                resetAllData();
+                setIsResetConfirmOpen(false);
+                setResetSuccessNotice(true);
+                setTimeout(() => setResetSuccessNotice(false), 3500);
+              }}
+              className="px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Yes, Reset Demo Data</span>
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

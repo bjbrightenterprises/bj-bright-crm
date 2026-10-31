@@ -15,6 +15,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
+import { getClientSection } from '../../types/crm';
 import { NavItem } from '../layout/Sidebar';
 
 interface DashboardModuleProps {
@@ -39,20 +40,20 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
     updateCandidate,
   } = useCRM();
 
-  // Metrics (4 KPI cards as requested)
+  // Metrics (4 KPI cards as requested; Active Clients counts only Green companies)
   const totalCandidates = visibleCandidates.length;
-  const activeClients = visibleClients.filter((c) => c.status === 'Active').length;
+  const activeClients = visibleClients.filter((c) => getClientSection(c) === 'Green').length;
   const openJobs = visibleJobs.filter((j) => j.status === 'Open').length;
   const pendingTasksCount = visibleReminders.filter((r) => r.status === 'Pending').length;
 
   // Local Indian Date (IST) string YYYY-MM-DD
-  const todayStr = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
-  const twoDaysLater = new Date();
-  twoDaysLater.setDate(twoDaysLater.getDate() + 2);
-  const twoDaysLaterStr = twoDaysLater.toISOString().split('T')[0];
+  const toISTDateStr = (daysOffset = 0) => {
+    const d = new Date(Date.now() + daysOffset * 86400000);
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  };
+  const todayStr = toISTDateStr(0);
+  const tomorrowStr = toISTDateStr(1);
+  const twoDaysLaterStr = toISTDateStr(2);
 
   // Follow-up Alerts panel items
   // 1. Today's pending interviews
@@ -60,13 +61,17 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
     (i) => i.status === 'Scheduled' && i.dateTime.startsWith(todayStr)
   );
 
-  // 2. Client follow-ups due today or overdue
-  const clientFollowUpsDue = visibleReminders.filter(
+  // 2. Client follow-ups due today or overdue (tasks + client nextFollowUpDate)
+  const clientFollowUpTasksDue = visibleReminders.filter(
     (r) =>
       r.status === 'Pending' &&
       r.dueDate <= todayStr &&
       (r.category === 'Client Follow-up' || r.relatedType === 'client' || r.title.toLowerCase().includes('client'))
   );
+  const clientsWithDueFollowUp = visibleClients.filter(
+    (c) => c.nextFollowUpDate && c.nextFollowUpDate <= todayStr
+  );
+  const totalClientFollowUpsCount = clientFollowUpTasksDue.length + clientsWithDueFollowUp.length;
 
   // 3. Candidate joinings due today, tomorrow, or within 2 days (or overdue)
   const candidateJoiningsDue = visibleCandidates.filter((c) => {
@@ -264,21 +269,45 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5 text-[#F5A623]" />
-                Client Follow-ups ({clientFollowUpsDue.length})
+                Client Follow-ups ({totalClientFollowUpsCount})
               </span>
               <button
-                onClick={() => onNavigate('tasks')}
+                onClick={() => onNavigate('clients')}
                 className="text-[11px] font-bold text-blue-600 dark:text-amber-400 hover:underline"
               >
-                View Tasks
+                View Clients
               </button>
             </div>
 
-            {clientFollowUpsDue.length === 0 ? (
+            {totalClientFollowUpsCount === 0 ? (
               <p className="text-xs text-slate-400 italic py-4 text-center">All client follow-ups completed.</p>
             ) : (
               <div className="space-y-2.5">
-                {clientFollowUpsDue.map((task) => (
+                {clientsWithDueFollowUp.map((client) => (
+                  <div
+                    key={`client-fu-${client.id}`}
+                    onClick={() => onNavigate('clients')}
+                    className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs hover:border-amber-400 transition-all cursor-pointer space-y-1.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-bold text-xs text-slate-900 dark:text-white leading-snug">{client.companyName}</p>
+                      {client.nextFollowUpDate && client.nextFollowUpDate < todayStr ? (
+                        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-bold shrink-0">
+                          Overdue
+                        </span>
+                      ) : (
+                        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold shrink-0">
+                          Due Today
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <span>{client.hrContacts?.[0]?.name || 'Contact'} • {client.city}</span>
+                      <span className="font-medium">Follow-up: {client.nextFollowUpDate}</span>
+                    </div>
+                  </div>
+                ))}
+                {clientFollowUpTasksDue.map((task) => (
                   <div
                     key={task.id}
                     className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs space-y-2"

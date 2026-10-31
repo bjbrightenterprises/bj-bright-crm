@@ -5,6 +5,8 @@ import {
   JobOpening,
   Interview,
   PipelineItem,
+  CLIENT_SECTION_LABELS,
+  getClientSection,
 } from '../types/crm';
 import {
   ExportColumnDef,
@@ -503,6 +505,70 @@ export const CLIENT_EXPORT_COLUMNS: ExportColumnDef[] = [
     getValue: (c: Client) => c.status,
   },
   {
+    key: 'section',
+    header: 'Section',
+    description: 'Colour-coded client section (Green: Active Clients, Blue: In Discussion, Red: New Enquiries)',
+    allowedValues: 'Green (Active Clients), Blue (In Discussion), Red (New Enquiries)',
+    dataType: 'Text',
+    width: 24,
+    validationList: ['Green', 'Blue', 'Red'],
+    getValue: (c: Client) => {
+      const sec = getClientSection(c);
+      return `${sec} (${CLIENT_SECTION_LABELS[sec]})`;
+    },
+  },
+  {
+    key: 'enquiryDate',
+    header: 'Enquiry Date',
+    description: 'Date when the company enquiry was first received',
+    allowedValues: 'YYYY-MM-DD',
+    dataType: 'Text',
+    width: 18,
+    getValue: (c: Client) => c.enquiryDate || (c.createdAt ? c.createdAt.slice(0, 10) : ''),
+  },
+  {
+    key: 'lastContactedDate',
+    header: 'Last Contacted',
+    description: 'Most recent conversation date with the company',
+    allowedValues: 'YYYY-MM-DD',
+    dataType: 'Text',
+    width: 18,
+    getValue: (c: Client) => c.lastContactedDate || '',
+  },
+  {
+    key: 'nextFollowUpDate',
+    header: 'Next Follow-up',
+    description: 'Scheduled next follow-up date with the company',
+    allowedValues: 'YYYY-MM-DD',
+    dataType: 'Text',
+    width: 18,
+    getValue: (c: Client) => c.nextFollowUpDate || '',
+  },
+  {
+    key: 'agreementSignedDate',
+    header: 'Agreement Signed Date',
+    description: 'Date agreement was signed (for Green / Active Clients)',
+    allowedValues: 'YYYY-MM-DD',
+    dataType: 'Text',
+    width: 22,
+    getValue: (c: Client) => (getClientSection(c) === 'Green' ? c.agreementSignedDate || '' : ''),
+  },
+  {
+    key: 'latestRemark',
+    header: 'Latest Remark',
+    description: 'Most recent remark recorded on the company timeline',
+    allowedValues: 'Free text up to 500 chars',
+    dataType: 'Text',
+    width: 36,
+    getValue: (c: Client) => {
+      if (!c.remarks || c.remarks.length === 0) return '';
+      const sorted = [...c.remarks].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      return sorted[0]?.text || '';
+    },
+  },
+  {
     key: 'assignedAccountManagerName',
     header: 'Account Manager',
     description: 'Assigned senior client relationship manager',
@@ -534,7 +600,7 @@ export const CLIENT_EXPORT_COLUMNS: ExportColumnDef[] = [
   {
     key: 'createdDate',
     header: 'Onboarded Date',
-    description: 'Date client agreement signed / onboarded',
+    description: 'Date client record was created in CRM',
     allowedValues: 'Real Excel Date (DD/MM/YYYY)',
     dataType: 'Date',
     width: 18,
