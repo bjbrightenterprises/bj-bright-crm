@@ -24,10 +24,15 @@ import { Candidate, Client } from './types/crm';
 import { dataService } from './lib/dataService';
 
 const CRMAppContent: React.FC = () => {
-  const { currentUser, users, activeStatusRemarkModal, closeStatusRemarkModal, submitStatusRemark } = useCRM();
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return dataService.isSessionLoggedIn();
-  });
+  const {
+    currentUser,
+    authLoading,
+    isAuthenticated,
+    logoutFromFirebase,
+    activeStatusRemarkModal,
+    closeStatusRemarkModal,
+    submitStatusRemark,
+  } = useCRM();
 
   const [currentTab, setCurrentTab] = useState<NavItem>('dashboard');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -48,22 +53,21 @@ const CRMAppContent: React.FC = () => {
   const [preSelectedClientIdForJob, setPreSelectedClientIdForJob] = useState<string | undefined>();
   const [preSelectedCandidateForInterview, setPreSelectedCandidateForInterview] = useState<Candidate | null>(null);
 
-  // Instant sign-out if current session user was disabled or deleted
-  const sessionUserId = dataService.getSessionUserId();
-  const sessionUserRecord = users.find((u) => u.id === sessionUserId);
-  if (isLoggedIn && (!sessionUserRecord || !sessionUserRecord.active)) {
-    dataService.clearSession();
+  if (authLoading) {
     return (
-      <div className="min-h-screen flex flex-col">
-        <LoginScreen onLoginSuccess={() => setIsLoggedIn(true)} />
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-10 h-10 rounded-full border-3 border-[#F5A623] border-t-transparent animate-spin" />
+          <p className="text-xs font-bold text-slate-300">Connecting to BJ Bright Cloud CRM...</p>
+        </div>
       </div>
     );
   }
 
-  if (!isLoggedIn) {
+  if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex flex-col">
-        <LoginScreen onLoginSuccess={() => setIsLoggedIn(true)} />
+        <LoginScreen />
       </div>
     );
   }
@@ -123,8 +127,7 @@ const CRMAppContent: React.FC = () => {
           }}
           onOpenFirebaseModal={() => {}}
           onLogout={() => {
-            dataService.clearSession();
-            setIsLoggedIn(false);
+            logoutFromFirebase();
           }}
         />
 

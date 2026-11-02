@@ -1,74 +1,100 @@
 import React, { useState } from 'react';
 import { useCRM } from '../../context/CRMContext';
-import { dataService } from '../../lib/dataService';
-import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff, ShieldCheck, UserCheck } from 'lucide-react';
-import { UserRole } from '../../types/crm';
+import {
+  Lock,
+  Mail,
+  ArrowRight,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  CheckCircle2,
+  KeyRound,
+} from 'lucide-react';
 
 interface LoginScreenProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess?: () => void;
 }
 
-const ROLE_DISPLAY_NAMES: Record<UserRole, string> = {
-  admin: 'Admin',
-  manager: 'Manager',
-  hr_executive: 'HR Executive',
-  recruiter: 'Recruiter',
-};
-
-const DEFAULT_PASSWORDS_BY_EMAIL: Record<string, string> = {
-  'praveenverma1420@gmail.com': 'Admin@123',
-  'admin@bjbright.com': 'Admin@123',
-};
-
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
-  const { users, switchUser, companySettings } = useCRM();
-  const [email, setEmail] = useState(() => dataService.getLastLoginEmail());
+  const {
+    companySettings,
+    loginWithFirebase,
+    sendForgotPasswordEmail,
+    accessDeniedMessage,
+    clearAccessDeniedMessage,
+  } = useCRM();
+
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [resetSuccessMsg, setResetSuccessMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setResetSuccessMsg('');
+    clearAccessDeniedMessage();
 
     const cleanEmail = email.trim().toLowerCase();
-    const found = users.find((u) => {
-      const uEmail = u.email.toLowerCase();
-      if (uEmail === cleanEmail) return true;
+    if (!cleanEmail || !password) return;
+
+    setIsSubmitting(true);
+    try {
+      await loginWithFirebase(cleanEmail, password);
+      onLoginSuccess?.();
+    } catch (err: any) {
+      const code = err?.code || '';
       if (
-        (cleanEmail === 'praveenverma1420@gmail.com' || cleanEmail === 'admin@bjbright.com') &&
-        u.role === 'admin'
+        err?.message === 'Your access is not active. Please contact your Admin.'
       ) {
-        return true;
+        setError('Your access is not active. Please contact your Admin.');
+      } else if (
+        code === 'auth/invalid-credential' ||
+        code === 'auth/wrong-password' ||
+        code === 'auth/user-not-found'
+      ) {
+        setError('Invalid email or password. Please verify your credentials.');
+      } else if (code === 'auth/user-disabled') {
+        setError('Your access is not active. Please contact your Admin.');
+      } else if (code === 'auth/too-many-requests') {
+        setError('Too many failed sign-in attempts. Please reset your password or try again shortly.');
+      } else {
+        setError(err?.message || 'Sign-in failed. Please check your connection and try again.');
       }
-      return false;
-    });
-
-    if (!found) {
-      setError('Invalid email address. Only accounts registered by the Administrator can sign in.');
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (!found.active) {
-      setError('Your account has been disabled by the Administrator. Please contact HR Admin.');
-      return;
-    }
-
-    const expectedPassword =
-      found.password ||
-      DEFAULT_PASSWORDS_BY_EMAIL[cleanEmail] ||
-      DEFAULT_PASSWORDS_BY_EMAIL[found.email.toLowerCase()] ||
-      'bjbright2026';
-
-    if (password !== expectedPassword) {
-      setError('Incorrect password. Please verify your password and try again.');
-      return;
-    }
-
-    dataService.startSession(found.id, cleanEmail);
-    switchUser(found.id);
-    onLoginSuccess();
   };
+
+  const handleForgotPassword = async () => {
+    setError('');
+    setResetSuccessMsg('');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError('Please enter your registered email address above to receive a password reset link.');
+      return;
+    }
+
+    setIsSendingReset(true);
+    try {
+      await sendForgotPasswordEmail(cleanEmail);
+      setResetSuccessMsg(
+        `Password reset email sent to ${cleanEmail}. Please check your inbox and spam folder.`
+      );
+    } catch (err: any) {
+      setError(
+        err?.message || 'Unable to send password reset email. Verify your email address.'
+      );
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
+  const displayError = accessDeniedMessage || error;
 
   return (
     <div className="flex-1 bg-slate-950 flex flex-col justify-center items-center p-4 relative overflow-hidden">
@@ -87,10 +113,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </p>
         </div>
 
-        {error && (
+        {displayError && (
           <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2 font-medium">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+            <span>{displayError}</span>
+          </div>
+        )}
+
+        {resetSuccessMsg && (
+          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2 font-medium">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{resetSuccessMsg}</span>
           </div>
         )}
 
@@ -112,7 +145,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">Password</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-slate-300">Password</label>
+              <button
+                type="button"
+                disabled={isSendingReset}
+                onClick={handleForgotPassword}
+                className="text-[11px] font-bold text-[#F5A623] hover:text-amber-400 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <KeyRound className="w-3 h-3" />
+                <span>{isSendingReset ? 'Sending reset link...' : 'Forgot password?'}</span>
+              </button>
+            </div>
             <div className="relative">
               <Lock className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
               <input
@@ -137,16 +181,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
           <button
             type="submit"
-            className="w-full py-2.5 rounded-xl bg-[#F5A623] hover:bg-amber-500 text-slate-950 font-extrabold text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full py-2.5 rounded-xl bg-[#F5A623] hover:bg-amber-500 disabled:opacity-60 text-slate-950 font-extrabold text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span>Sign In to CRM Portal</span>
+            <span>{isSubmitting ? 'Signing in...' : 'Sign In to CRM Portal'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
         <div className="pt-3 border-t border-slate-800/80 flex items-center justify-center gap-2 text-[11px] text-slate-400">
           <ShieldCheck className="w-4 h-4 text-[#F5A623] shrink-0" />
-          <span>Authorized Personnel Only • Role-Based Access Control</span>
+          <span>Firebase Auth • Role-Based Cloud Access Control</span>
         </div>
       </div>
     </div>

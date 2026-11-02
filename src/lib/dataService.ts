@@ -1,4 +1,33 @@
 import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  where,
+  writeBatch,
+  serverTimestamp,
+  Unsubscribe,
+} from 'firebase/firestore';
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  updatePassword,
+} from 'firebase/auth';
+import {
+  db,
+  auth,
+  createAuthUserViaSecondaryApp,
+  handleFirestoreError,
+  OperationType,
+  isInitialAdminEmail,
+} from './firebase';
+import {
   Candidate,
   Client,
   JobOpening,
@@ -6,6 +35,7 @@ import {
   Interview,
   ActivityLogItem,
   User,
+  UserRole,
   CompanySettings,
   ReminderTask,
   EditHistoryItem,
@@ -16,438 +46,1198 @@ import {
 } from '../types/crm';
 import { buildSeedData } from './mockData';
 
-const STORAGE_KEYS = {
-  SEED_VERSION: 'bj_production_live_v2',
-  THEME: 'bj_theme',
-  USERS: 'bj_users',
-  CANDIDATES: 'bj_candidates',
-  CLIENTS: 'bj_clients',
-  JOBS: 'bj_jobs',
-  PIPELINE: 'bj_pipeline',
-  INTERVIEWS: 'bj_interviews',
-  REMINDERS: 'bj_reminders',
-  ACTIVITIES: 'bj_activities',
-  SETTINGS: 'bj_settings',
-  EDIT_HISTORIES: 'bj_edit_histories',
-  READ_NOTIFS: 'bj_read_notifs',
-  EXPORT_LOGS: 'bj_export_logs',
-  IMPORT_LOGS: 'bj_import_logs',
-} as const;
-
-const SESSION_KEYS = {
-  LOGGED_IN: 'bj_session_logged_in',
-  CURRENT_USER_ID: 'bj_session_user_id',
-  LAST_EMAIL: 'bj_session_last_email',
-} as const;
-
-const DEMO_USER_IDS = new Set(['usr_manager', 'usr_hr', 'usr_recruiter']);
-const DEMO_USER_EMAILS = new Set([
-  'manager@demo.bjbright.com',
-  'hr@demo.bjbright.com',
-  'recruiter@demo.bjbright.com',
-  'manager@bjbright.com',
-  'hr@bjbright.com',
-  'recruiter@bjbright.com',
-]);
-
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+// Strip undefined properties recursively before sending to Firestore
+function stripUndefined<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map((item) => stripUndefined(item)) as unknown as T;
   }
-}
-
-function writeJson<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Ignore quota / private browsing errors
+  // Preserve Firestore FieldValue sentinels (e.g. serverTimestamp())
+  if ((obj as any)._methodName) return obj;
+  const cleaned: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, any>)) {
+    if (v !== undefined) {
+      cleaned[k] = stripUndefined(v);
+    }
   }
+  return cleaned as T;
 }
 
-function normalizeClients(raw: any[]): Client[] {
-  return raw.map((c) => {
-    const sec = c.section || getClientSection(c);
-    const baseDate = (c.createdAt || new Date().toISOString()).slice(0, 10);
-    const rawContacts = Array.isArray(c.contactPersons)
-      ? c.contactPersons
-      : Array.isArray(c.hrContacts)
-      ? c.hrContacts
-      : [];
-    const rawRemarks = Array.isArray(c.remarks)
-      ? c.remarks.map((r: any) => ({
-          id: r.id || `crem_${Date.now()}`,
-          clientId: r.clientId || c.id,
-          section: r.section || sec,
-          text: r.text || '',
-          authorUserId: r.authorUserId || r.createdByUserId || 'usr_admin',
-          authorName: r.authorName || r.createdByUserName || 'Praveen Verma',
-          authorRole: r.authorRole || 'admin',
-          createdAt: r.createdAt || new Date().toISOString(),
-        }))
-      : [];
+export function normalizeClientRecord(c: any): Client {
+  const sec = c.section || getClientSection(c);
+  const baseDate = (
+    typeof c.createdAt === 'string' ? c.createdAt : new Date().toISOString()
+  ).slice(0, 10);
+  const rawContacts = Array.isArray(c.contactPersons)
+    ? c.contactPersons
+    : Array.isArray(c.hrContacts)
+    ? c.hrContacts
+    : [];
+  const rawRemarks = Array.isArray(c.remarks)
+    ? c.remarks.map((r: any, idx: number) => ({
+        id: r.id || `crem_${idx}`,
+        clientId: r.clientId || c.id,
+        section: r.section || sec,
+        text: r.text || '',
+        authorUserId: r.authorUserId || r.createdByUserId || 'usr_admin',
+        authorName: r.authorName || r.createdByUserName || 'Praveen Verma',
+        authorRole: r.authorRole || 'admin',
+        createdAt:
+          typeof r.createdAt === 'string'
+            ? r.createdAt
+            : new Date().toISOString(),
+      }))
+    : [];
 
-    return {
-      ...c,
-      name: c.name || c.companyName || 'Unnamed Company',
-      contactPersons: rawContacts,
-      agreementDetails: c.agreementDetails || 'Standard placement agreement',
-      commissionPercent:
-        typeof c.commissionPercent === 'number'
-          ? c.commissionPercent
-          : typeof c.commissionPercentage === 'number'
-          ? c.commissionPercentage
-          : 8.33,
-      assignedAccountManagerId:
-        c.assignedAccountManagerId || c.assignedRecruiterId || 'usr_admin',
-      assignedAccountManagerName:
-        c.assignedAccountManagerName || c.assignedRecruiterName || 'Praveen Verma',
-      section: sec,
-      status: sectionToClientStatus(sec),
-      enquiryDate: c.enquiryDate || baseDate,
-      lastContactedDate: c.lastContactedDate || (sec !== 'Red' ? baseDate : undefined),
-      agreementSignedDate: c.agreementSignedDate || (sec === 'Green' ? baseDate : undefined),
-      remarks: rawRemarks,
-    };
-  });
+  return {
+    ...c,
+    name: c.name || c.companyName || 'Unnamed Company',
+    contactPersons: rawContacts,
+    agreementDetails: c.agreementDetails || 'Standard placement agreement',
+    commissionPercent:
+      typeof c.commissionPercent === 'number'
+        ? c.commissionPercent
+        : typeof c.commissionPercentage === 'number'
+        ? c.commissionPercentage
+        : 8.33,
+    assignedAccountManagerId:
+      c.assignedAccountManagerId || c.assignedRecruiterId || 'usr_admin',
+    assignedAccountManagerName:
+      c.assignedAccountManagerName || c.assignedRecruiterName || 'Praveen Verma',
+    section: sec,
+    status: sectionToClientStatus(sec),
+    enquiryDate: c.enquiryDate || baseDate,
+    lastContactedDate:
+      c.lastContactedDate || (sec !== 'Red' ? baseDate : undefined),
+    agreementSignedDate:
+      c.agreementSignedDate || (sec === 'Green' ? baseDate : undefined),
+    remarks: rawRemarks,
+  };
 }
 
-const DEMO_CANDIDATE_IDS = new Set([
-  'cand_1', 'cand_2', 'cand_3', 'cand_4', 'cand_5',
-  'cand_6', 'cand_7', 'cand_8', 'cand_9', 'cand_10',
-  'cand_11', 'cand_12', 'cand_13', 'cand_14', 'cand_15',
-  'cand_16', 'cand_17', 'cand_18', 'cand_19', 'cand_20',
-  'cand_21', 'cand_22',
-]);
+// In-memory cache updated by real-time Firestore listeners for synchronous helper access
+let cachedUsers: User[] = [];
+let cachedCandidates: Candidate[] = [];
+let cachedClients: Client[] = [];
+let cachedJobs: JobOpening[] = [];
+let cachedPipeline: PipelineItem[] = [];
+let cachedInterviews: Interview[] = [];
+let cachedTasks: ReminderTask[] = [];
+let cachedEditHistory: EditHistoryItem[] = [];
+let cachedActivities: ActivityLogItem[] = [];
+let cachedSettings: CompanySettings = buildSeedData().companySettings;
+let currentTheme: 'dark' | 'light' = 'light';
+
+export type SyncState = 'Synced' | 'Syncing...' | 'Offline';
 
 export const dataService = {
-  // Initialize production company & job mandate data while stripping old demo sample candidates & demo accounts
-  ensureSeedDataInitialized(): void {
-    try {
-      const isProductionSeeded = localStorage.getItem(STORAGE_KEYS.SEED_VERSION) === 'true';
-      if (!isProductionSeeded) {
-        const seed = buildSeedData();
-        // Preserve any real user-added clients/jobs and merge all 9 Green/Blue companies & 13 job mandates
-        const existingClients = readJson<any[]>(STORAGE_KEYS.CLIENTS, []);
-        const seedClientMap = new Map(seed.clients.map((sc) => [sc.id, sc]));
-        const mergedClients = existingClients.length > 0
-          ? [
-              ...existingClients.map((c) => {
-                const sm = seedClientMap.get(c.id);
-                return sm ? { ...sm, ...c, agreementDetails: c.agreementDetails || sm.agreementDetails, activeJobsCount: sm.activeJobsCount } : c;
-              }),
-              ...seed.clients.filter((sc) => !existingClients.some((ec) => ec.id === sc.id)),
-            ]
-          : seed.clients;
-
-        const existingJobs = readJson<JobOpening[]>(STORAGE_KEYS.JOBS, []);
-        const seedJobMap = new Map(seed.jobs.map((sj) => [sj.id, sj]));
-        const mergedJobs = existingJobs.length > 0
-          ? [
-              ...existingJobs.map((j) => {
-                const sj = seedJobMap.get(j.id);
-                return sj
-                  ? {
-                      ...sj,
-                      ...j,
-                      title: sj.title,
-                      description: j.description || sj.description,
-                      assignedRecruiterIds: ['usr_admin'],
-                      assignedRecruiterNames: ['Praveen Verma'],
-                    }
-                  : j;
-              }),
-              ...seed.jobs.filter((sj) => !existingJobs.some((ej) => ej.id === sj.id)),
-            ]
-          : seed.jobs;
-
-        // Keep only non-demo candidates/pipeline/interviews/reminders if user added any real ones
-        const existingCandidates = readJson<Candidate[]>(STORAGE_KEYS.CANDIDATES, []).filter(
-          (c) => !DEMO_CANDIDATE_IDS.has(c.id)
-        );
-        const existingPipeline = readJson<PipelineItem[]>(STORAGE_KEYS.PIPELINE, []).filter(
-          (p) => !DEMO_CANDIDATE_IDS.has(p.candidateId) && !p.id.startsWith('pipe_')
-        );
-        const existingInterviews = readJson<Interview[]>(STORAGE_KEYS.INTERVIEWS, []).filter(
-          (i) => !DEMO_CANDIDATE_IDS.has(i.candidateId) && !['int_1', 'int_2', 'int_3', 'int_4', 'int_5'].includes(i.id)
-        );
-        const existingReminders = readJson<ReminderTask[]>(STORAGE_KEYS.REMINDERS, []).filter(
-          (r) => !['rem_1', 'rem_2', 'rem_3', 'rem_4', 'rem_5'].includes(r.id)
-        );
-
-        // Keep Admin and any custom staff added by Admin, removing the 3 demo accounts
-        const existingUsers = readJson<User[]>(STORAGE_KEYS.USERS, []).filter(
-          (u) => !DEMO_USER_IDS.has(u.id) && !DEMO_USER_EMAILS.has(u.email.toLowerCase()) && u.id !== 'usr_admin'
-        );
-        const cleanedUsers = [...seed.users, ...existingUsers];
-
-        writeJson(STORAGE_KEYS.USERS, cleanedUsers);
-        writeJson(STORAGE_KEYS.SETTINGS, seed.companySettings);
-        writeJson(STORAGE_KEYS.CLIENTS, normalizeClients(mergedClients));
-        writeJson(STORAGE_KEYS.JOBS, mergedJobs);
-        writeJson(STORAGE_KEYS.CANDIDATES, existingCandidates);
-        writeJson(STORAGE_KEYS.PIPELINE, existingPipeline);
-        writeJson(STORAGE_KEYS.INTERVIEWS, existingInterviews);
-        writeJson(STORAGE_KEYS.REMINDERS, existingReminders);
-
-        // Ensure current session points to usr_admin if it pointed to a removed demo user
-        const currentSessionUser = sessionStorage.getItem(SESSION_KEYS.CURRENT_USER_ID);
-        if (currentSessionUser && DEMO_USER_IDS.has(currentSessionUser)) {
-          sessionStorage.setItem(SESSION_KEYS.CURRENT_USER_ID, 'usr_admin');
-        }
-
-        localStorage.setItem(STORAGE_KEYS.SEED_VERSION, 'true');
-      }
-    } catch {
-      // Ignore initialization errors
-    }
-  },
-
-  // Restore / Sync Default Company & Job Mandate Data
-  resetToDemoSeedData() {
-    const seed = buildSeedData();
-    const normalizedClients = normalizeClients(seed.clients);
-    writeJson(STORAGE_KEYS.USERS, seed.users);
-    writeJson(STORAGE_KEYS.SETTINGS, seed.companySettings);
-    writeJson(STORAGE_KEYS.CLIENTS, normalizedClients);
-    writeJson(STORAGE_KEYS.JOBS, seed.jobs);
-    writeJson(STORAGE_KEYS.CANDIDATES, seed.candidates);
-    writeJson(STORAGE_KEYS.PIPELINE, seed.pipeline);
-    writeJson(STORAGE_KEYS.INTERVIEWS, seed.interviews);
-    writeJson(STORAGE_KEYS.REMINDERS, seed.reminders);
-    writeJson(STORAGE_KEYS.ACTIVITIES, seed.activities);
-    writeJson(STORAGE_KEYS.EDIT_HISTORIES, []);
-    writeJson(STORAGE_KEYS.READ_NOTIFS, []);
-    writeJson(STORAGE_KEYS.EXPORT_LOGS, []);
-    writeJson(STORAGE_KEYS.IMPORT_LOGS, []);
-    try {
-      localStorage.setItem(STORAGE_KEYS.SEED_VERSION, 'true');
-    } catch {
-      // Ignore
-    }
-    return {
-      ...seed,
-      clients: normalizedClients,
-    };
-  },
-
-  // Theme preference
+  // Theme preference (UI only, not CRM data)
   getTheme(): 'dark' | 'light' {
-    try {
-      return localStorage.getItem(STORAGE_KEYS.THEME) === 'dark' ? 'dark' : 'light';
-    } catch {
-      return 'light';
-    }
+    return currentTheme;
   },
   setTheme(theme: 'dark' | 'light'): void {
-    try {
-      localStorage.setItem(STORAGE_KEYS.THEME, theme);
-    } catch {
-      // Ignore
+    currentTheme = theme;
+  },
+
+  // Generate a new Firestore auto-ID for a given collection
+  createAutoId(collectionName: string): string {
+    return doc(collection(db, collectionName)).id;
+  },
+
+  // ==================== AUTHENTICATION & USER PROFILE ====================
+  async loginWithEmail(email: string, password: string) {
+    const cleanEmail = email.trim().toLowerCase();
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    return cred.user;
+  },
+
+  async logoutFirebase() {
+    await signOut(auth);
+  },
+
+  async sendPasswordReset(email: string) {
+    await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+  },
+
+  async updateCurrentUserPassword(newPassword: string) {
+    if (auth.currentUser) {
+      await updatePassword(auth.currentUser, newPassword);
     }
   },
 
-  // Session management (sessionStorage as required)
-  isSessionLoggedIn(): boolean {
+  /**
+   * Loads or bootstraps the signed-in user's profile from users/{uid}.
+   * First Admin rule: If email is the initial Admin email and no users exist yet (or profile doesn't exist),
+   * create users/{uid} with role: 'admin' and active: true.
+   * Never allow anyone else to self-register.
+   */
+  async verifyOrBootstrapUserProfile(
+    uid: string,
+    email: string | null
+  ): Promise<User | null> {
+    const userDocRef = doc(db, 'users', uid);
     try {
-      return sessionStorage.getItem(SESSION_KEYS.LOGGED_IN) === 'true';
-    } catch {
-      return false;
-    }
-  },
-  getSessionUserId(): string {
-    try {
-      const id = sessionStorage.getItem(SESSION_KEYS.CURRENT_USER_ID) || 'usr_admin';
-      return DEMO_USER_IDS.has(id) ? 'usr_admin' : id;
-    } catch {
-      return 'usr_admin';
-    }
-  },
-  getLastLoginEmail(): string {
-    try {
-      const email = sessionStorage.getItem(SESSION_KEYS.LAST_EMAIL) || '';
-      if (DEMO_USER_EMAILS.has(email.toLowerCase()) || email.endsWith('@demo.bjbright.com')) {
-        return '';
+      const snap = await getDoc(userDocRef);
+      if (snap.exists()) {
+        const data = snap.data() as User;
+        return { ...data, id: uid };
       }
-      return email;
-    } catch {
-      return '';
-    }
-  },
-  startSession(userId: string, email: string): void {
-    try {
-      sessionStorage.setItem(SESSION_KEYS.LOGGED_IN, 'true');
-      sessionStorage.setItem(SESSION_KEYS.CURRENT_USER_ID, userId);
-      sessionStorage.setItem(SESSION_KEYS.LAST_EMAIL, email);
-    } catch {
-      // Ignore
-    }
-  },
-  setSessionUserId(userId: string): void {
-    try {
-      sessionStorage.setItem(SESSION_KEYS.CURRENT_USER_ID, userId);
-    } catch {
-      // Ignore
-    }
-  },
-  clearSession(): void {
-    try {
-      sessionStorage.removeItem(SESSION_KEYS.LOGGED_IN);
-      sessionStorage.removeItem(SESSION_KEYS.CURRENT_USER_ID);
-    } catch {
-      // Ignore
+
+      // Profile does not exist: check if this is the initial Admin
+      if (isInitialAdminEmail(email)) {
+        const adminProfile: User = {
+          id: uid,
+          name: 'Praveen Verma',
+          email: (email || 'praveenverma1420@gmail.com').trim().toLowerCase(),
+          phone: '+91 84488 92852',
+          role: 'admin',
+          designation: 'Founder & Managing Director',
+          avatar: '/assets/aistudio/BJ-Bright-logo-circle_cb142036.png',
+          active: true,
+        };
+        await setDoc(
+          userDocRef,
+          stripUndefined({
+            ...adminProfile,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+        );
+        return adminProfile;
+      }
+
+      // Check if an Admin pre-created a user document keyed by email or another ID, or reject
+      return null;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, `users/${uid}`);
+      throw err;
     }
   },
 
-  // Collection getters & setters
-  getUsers(): User[] {
-    const seed = buildSeedData();
-    const stored = readJson<User[]>(STORAGE_KEYS.USERS, seed.users).filter(
-      (u) => !DEMO_USER_IDS.has(u.id) && !DEMO_USER_EMAILS.has(u.email.toLowerCase())
+  /**
+   * Admin-only: Create a new Firebase Auth account using the secondary Firebase App instance
+   * (so Admin is NOT signed out), then create users/{uid} in Firestore.
+   */
+  async adminCreateUserAccount(
+    userData: Omit<User, 'id'>,
+    temporaryPassword: string
+  ): Promise<User> {
+    const cleanEmail = userData.email.trim().toLowerCase();
+    const newUid = await createAuthUserViaSecondaryApp(
+      cleanEmail,
+      temporaryPassword
     );
-    return stored.length > 0 ? stored : seed.users;
-  },
-  saveUsers(users: User[]): void {
-    writeJson(STORAGE_KEYS.USERS, users);
+    const newUser: User = {
+      ...userData,
+      id: newUid,
+      email: cleanEmail,
+      active: true,
+    };
+    const { password: _discardPassword, ...firestoreUser } = newUser as any;
+    try {
+      await setDoc(
+        doc(db, 'users', newUid),
+        stripUndefined({
+          ...firestoreUser,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      );
+      return newUser;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `users/${newUid}`);
+      throw err;
+    }
   },
 
-  getCandidates(): Candidate[] {
-    const seed = buildSeedData();
-    return readJson<Candidate[]>(STORAGE_KEYS.CANDIDATES, seed.candidates);
-  },
-  saveCandidates(candidates: Candidate[]): void {
-    writeJson(STORAGE_KEYS.CANDIDATES, candidates);
+  async updateUserDoc(uid: string, updates: Partial<User>): Promise<void> {
+    try {
+      const { password: _discard, ...cleanUpdates } = updates as any;
+      await updateDoc(
+        doc(db, 'users', uid),
+        stripUndefined({
+          ...cleanUpdates,
+          updatedAt: serverTimestamp(),
+        })
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+      throw err;
+    }
   },
 
-  getClients(): Client[] {
-    const seed = buildSeedData();
-    const raw = readJson<Client[]>(STORAGE_KEYS.CLIENTS, seed.clients);
-    const seedMap = new Map(seed.clients.map((sc) => [sc.id, sc]));
-    const updatedRaw = raw.map((c) => {
-      const seedMatch = seedMap.get(c.id);
-      if (seedMatch) {
+  async setUserActiveStatus(uid: string, active: boolean): Promise<void> {
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        active,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+      throw err;
+    }
+  },
+
+  // ==================== REAL-TIME LISTENERS (onSnapshot) ====================
+  subscribeToUserProfile(
+    uid: string,
+    onProfile: (user: User | null) => void,
+    onError?: (err: unknown) => void
+  ): Unsubscribe {
+    const ref = doc(db, 'users', uid);
+    return onSnapshot(
+      ref,
+      { includeMetadataChanges: true },
+      (snap) => {
+        if (!snap.exists()) {
+          onProfile(null);
+          return;
+        }
+        onProfile({ ...(snap.data() as User), id: snap.id });
+      },
+      (err) => {
+        handleFirestoreError(err, OperationType.GET, `users/${uid}`);
+        onError?.(err);
+      }
+    );
+  },
+
+  subscribeToUsers(
+    onData: (users: User[]) => void,
+    onSyncMeta?: (hasPendingWrites: boolean, fromCache: boolean) => void
+  ): Unsubscribe {
+    const colRef = collection(db, 'users');
+    return onSnapshot(
+      colRef,
+      { includeMetadataChanges: true },
+      (snap) => {
+        onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+        const list = snap.docs.map((d) => ({
+          ...(d.data() as User),
+          id: d.id,
+        }));
+        cachedUsers = list;
+        onData(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'users')
+    );
+  },
+
+  subscribeToCandidates(
+    uid: string,
+    role: UserRole,
+    onData: (candidates: Candidate[]) => void,
+    onSyncMeta?: (hasPendingWrites: boolean, fromCache: boolean) => void
+  ): Unsubscribe {
+    const colRef = collection(db, 'candidates');
+    const q =
+      role === 'admin' || role === 'manager'
+        ? colRef
+        : query(colRef, where('assignedRecruiterId', '==', uid));
+
+    return onSnapshot(
+      q,
+      { includeMetadataChanges: true },
+      (snap) => {
+        onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+        const list = snap.docs
+          .map((d) => ({ ...(d.data() as Candidate), id: d.id }))
+          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        cachedCandidates = list;
+        onData(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'candidates')
+    );
+  },
+
+  subscribeToClients(
+    onData: (clients: Client[]) => void,
+    onSyncMeta?: (hasPendingWrites: boolean, fromCache: boolean) => void
+  ): Unsubscribe {
+    const colRef = collection(db, 'clients');
+    return onSnapshot(
+      colRef,
+      { includeMetadataChanges: true },
+      (snap) => {
+        onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+        const list = snap.docs.map((d) =>
+          normalizeClientRecord({ ...d.data(), id: d.id })
+        );
+        cachedClients = list;
+        onData(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'clients')
+    );
+  },
+
+  subscribeToJobs(
+    onData: (jobs: JobOpening[]) => void,
+    onSyncMeta?: (hasPendingWrites: boolean, fromCache: boolean) => void
+  ): Unsubscribe {
+    const colRef = collection(db, 'jobs');
+    return onSnapshot(
+      colRef,
+      { includeMetadataChanges: true },
+      (snap) => {
+        onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+        const list = snap.docs
+          .map((d) => ({ ...(d.data() as JobOpening), id: d.id }))
+          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        cachedJobs = list;
+        onData(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'jobs')
+    );
+  },
+
+  subscribeToPipeline(
+    uid: string,
+    role: UserRole,
+    onData: (pipeline: PipelineItem[]) => void,
+    onSyncMeta?: (hasPendingWrites: boolean, fromCache: boolean) => void
+  ): Unsubscribe {
+    const colRef = collection(db, 'pipeline');
+    const q =
+      role === 'admin' || role === 'manager'
+        ? colRef
+        : query(colRef, where('assignedRecruiterId', '==', uid));
+
+    return onSnapshot(
+      q,
+      { includeMetadataChanges: true },
+      (snap) => {
+        onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+        const list = snap.docs.map((d) => ({
+          ...(d.data() as PipelineItem),
+          id: d.id,
+        }));
+        cachedPipeline = list;
+        onData(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'pipeline')
+    );
+  },
+
+  subscribeToInterviews(
+    uid: string,
+    role: UserRole,
+    onData: (interviews: Interview[]) => void,
+    onSyncMeta?: (hasPendingWrites: boolean, fromCache: boolean) => void
+  ): Unsubscribe {
+    const colRef = collection(db, 'interviews');
+    const q =
+      role === 'admin' || role === 'manager'
+        ? colRef
+        : query(colRef, where('assignedToRecruiterId', '==', uid));
+
+    return onSnapshot(
+      q,
+      { includeMetadataChanges: true },
+      (snap) => {
+        onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+        const list = snap.docs.map((d) => ({
+          ...(d.data() as Interview),
+          id: d.id,
+        }));
+        cachedInterviews = list;
+        onData(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'interviews')
+    );
+  },
+
+  subscribeToTasks(
+    uid: string,
+    role: UserRole,
+    onData: (tasks: ReminderTask[]) => void,
+    onSyncMeta?: (hasPendingWrites: boolean, fromCache: boolean) => void
+  ): Unsubscribe {
+    const colRef = collection(db, 'tasks');
+    if (role === 'admin' || role === 'manager') {
+      return onSnapshot(
+        colRef,
+        { includeMetadataChanges: true },
+        (snap) => {
+          onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+          const list = snap.docs.map((d) => ({
+            ...(d.data() as ReminderTask),
+            id: d.id,
+          }));
+          cachedTasks = list;
+          onData(list);
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'tasks')
+      );
+    }
+
+    if (role === 'hr_executive') {
+      let assignedList: ReminderTask[] = [];
+      let createdList: ReminderTask[] = [];
+      const emitMerged = () => {
+        const map = new Map<string, ReminderTask>();
+        assignedList.forEach((t) => map.set(t.id, t));
+        createdList.forEach((t) => map.set(t.id, t));
+        const merged = Array.from(map.values());
+        cachedTasks = merged;
+        onData(merged);
+      };
+
+      const unsub1 = onSnapshot(
+        query(colRef, where('assignedToUserId', '==', uid)),
+        { includeMetadataChanges: true },
+        (snap) => {
+          onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+          assignedList = snap.docs.map((d) => ({
+            ...(d.data() as ReminderTask),
+            id: d.id,
+          }));
+          emitMerged();
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'tasks')
+      );
+
+      const unsub2 = onSnapshot(
+        query(colRef, where('createdByUserId', '==', uid)),
+        { includeMetadataChanges: true },
+        (snap) => {
+          createdList = snap.docs.map((d) => ({
+            ...(d.data() as ReminderTask),
+            id: d.id,
+          }));
+          emitMerged();
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'tasks')
+      );
+
+      return () => {
+        unsub1();
+        unsub2();
+      };
+    }
+
+    // Recruiter: assigned records only
+    return onSnapshot(
+      query(colRef, where('assignedToUserId', '==', uid)),
+      { includeMetadataChanges: true },
+      (snap) => {
+        onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
+        const list = snap.docs.map((d) => ({
+          ...(d.data() as ReminderTask),
+          id: d.id,
+        }));
+        cachedTasks = list;
+        onData(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'tasks')
+    );
+  },
+
+  subscribeToEditHistory(
+    onData: (history: EditHistoryItem[]) => void
+  ): Unsubscribe {
+    const colRef = collection(db, 'editHistory');
+    return onSnapshot(
+      colRef,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => ({ ...(d.data() as EditHistoryItem), id: d.id }))
+          .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        cachedEditHistory = list;
+        onData(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'editHistory')
+    );
+  },
+
+  subscribeToSettings(
+    onData: (settings: CompanySettings) => void
+  ): Unsubscribe {
+    const docRef = doc(db, 'settings', 'company');
+    return onSnapshot(
+      docRef,
+      (snap) => {
+        if (snap.exists()) {
+          const merged = {
+            ...buildSeedData().companySettings,
+            ...(snap.data() as Partial<CompanySettings>),
+          };
+          cachedSettings = merged;
+          onData(merged);
+        } else {
+          onData(cachedSettings);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'settings/company')
+    );
+  },
+
+  // ==================== FIRESTORE CRUD OPERATIONS ====================
+
+  // Candidates
+  async createCandidateDoc(candidate: Candidate): Promise<string> {
+    const ref = candidate.id
+      ? doc(db, 'candidates', candidate.id)
+      : doc(collection(db, 'candidates'));
+    const payload = stripUndefined({
+      ...candidate,
+      id: ref.id,
+      lastEditReason: 'Initial creation',
+      serverCreatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
+    });
+    try {
+      await setDoc(ref, payload);
+      return ref.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `candidates/${ref.id}`);
+      throw err;
+    }
+  },
+
+  async updateCandidateDoc(
+    id: string,
+    updates: Partial<Candidate>,
+    editReason: string = 'Record updated'
+  ): Promise<void> {
+    const cleanReason =
+      editReason && editReason.trim().length > 0
+        ? editReason.trim()
+        : 'Record updated';
+    try {
+      await updateDoc(
+        doc(db, 'candidates', id),
+        stripUndefined({
+          ...updates,
+          lastEditReason: cleanReason,
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `candidates/${id}`);
+      throw err;
+    }
+  },
+
+  async deleteCandidateToTrash(
+    candidate: Candidate,
+    deletedByUser: User
+  ): Promise<void> {
+    const trashRef = doc(collection(db, 'trash'));
+    try {
+      const batch = writeBatch(db);
+      batch.set(
+        trashRef,
+        stripUndefined({
+          id: trashRef.id,
+          entityType: 'candidate',
+          entityId: candidate.id,
+          data: candidate,
+          deletedByUserId: deletedByUser.id,
+          deletedByUserName: deletedByUser.name,
+          deletedAt: new Date().toISOString(),
+          serverDeletedAt: serverTimestamp(),
+        })
+      );
+      batch.delete(doc(db, 'candidates', candidate.id));
+      await batch.commit();
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.DELETE,
+        `candidates/${candidate.id}`
+      );
+      throw err;
+    }
+  },
+
+  // Clients (Companies)
+  async createClientDoc(client: Client): Promise<string> {
+    const ref = client.id
+      ? doc(db, 'clients', client.id)
+      : doc(collection(db, 'clients'));
+    const payload = stripUndefined({
+      ...client,
+      id: ref.id,
+      lastEditReason: 'Initial company creation',
+      serverCreatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
+    });
+    try {
+      await setDoc(ref, payload);
+      return ref.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `clients/${ref.id}`);
+      throw err;
+    }
+  },
+
+  async updateClientDoc(
+    id: string,
+    updates: Partial<Client>,
+    editReason: string = 'Company details updated'
+  ): Promise<void> {
+    const cleanReason =
+      editReason && editReason.trim().length > 0
+        ? editReason.trim()
+        : 'Company details updated';
+    try {
+      await updateDoc(
+        doc(db, 'clients', id),
+        stripUndefined({
+          ...updates,
+          lastEditReason: cleanReason,
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `clients/${id}`);
+      throw err;
+    }
+  },
+
+  async deleteClientToTrash(
+    client: Client,
+    deletedByUser: User
+  ): Promise<void> {
+    const trashRef = doc(collection(db, 'trash'));
+    try {
+      const batch = writeBatch(db);
+      batch.set(
+        trashRef,
+        stripUndefined({
+          id: trashRef.id,
+          entityType: 'client',
+          entityId: client.id,
+          data: client,
+          deletedByUserId: deletedByUser.id,
+          deletedByUserName: deletedByUser.name,
+          deletedAt: new Date().toISOString(),
+          serverDeletedAt: serverTimestamp(),
+        })
+      );
+      batch.delete(doc(db, 'clients', client.id));
+      await batch.commit();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `clients/${client.id}`);
+      throw err;
+    }
+  },
+
+  // Jobs
+  async createJobDoc(job: JobOpening): Promise<string> {
+    const ref = job.id
+      ? doc(db, 'jobs', job.id)
+      : doc(collection(db, 'jobs'));
+    const payload = stripUndefined({
+      ...job,
+      id: ref.id,
+      lastEditReason: 'Initial job creation',
+      serverCreatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
+    });
+    try {
+      await setDoc(ref, payload);
+      return ref.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `jobs/${ref.id}`);
+      throw err;
+    }
+  },
+
+  async updateJobDoc(
+    id: string,
+    updates: Partial<JobOpening>,
+    editReason: string = 'Job updated'
+  ): Promise<void> {
+    const cleanReason =
+      editReason && editReason.trim().length > 0
+        ? editReason.trim()
+        : 'Job updated';
+    try {
+      await updateDoc(
+        doc(db, 'jobs', id),
+        stripUndefined({
+          ...updates,
+          lastEditReason: cleanReason,
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `jobs/${id}`);
+      throw err;
+    }
+  },
+
+  async deleteJobToTrash(job: JobOpening, deletedByUser: User): Promise<void> {
+    const trashRef = doc(collection(db, 'trash'));
+    try {
+      const batch = writeBatch(db);
+      batch.set(
+        trashRef,
+        stripUndefined({
+          id: trashRef.id,
+          entityType: 'job',
+          entityId: job.id,
+          data: job,
+          deletedByUserId: deletedByUser.id,
+          deletedByUserName: deletedByUser.name,
+          deletedAt: new Date().toISOString(),
+          serverDeletedAt: serverTimestamp(),
+        })
+      );
+      batch.delete(doc(db, 'jobs', job.id));
+      await batch.commit();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `jobs/${job.id}`);
+      throw err;
+    }
+  },
+
+  // Pipeline
+  async createPipelineDoc(item: PipelineItem): Promise<string> {
+    const ref = item.id
+      ? doc(db, 'pipeline', item.id)
+      : doc(collection(db, 'pipeline'));
+    try {
+      await setDoc(
+        ref,
+        stripUndefined({
+          ...item,
+          id: ref.id,
+          serverCreatedAt: serverTimestamp(),
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+      return ref.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `pipeline/${ref.id}`);
+      throw err;
+    }
+  },
+
+  async updatePipelineDoc(
+    id: string,
+    updates: Partial<PipelineItem>
+  ): Promise<void> {
+    try {
+      await updateDoc(
+        doc(db, 'pipeline', id),
+        stripUndefined({
+          ...updates,
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `pipeline/${id}`);
+      throw err;
+    }
+  },
+
+  async deletePipelineDoc(id: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, 'pipeline', id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `pipeline/${id}`);
+      throw err;
+    }
+  },
+
+  // Interviews
+  async createInterviewDoc(interview: Interview): Promise<string> {
+    const ref = interview.id
+      ? doc(db, 'interviews', interview.id)
+      : doc(collection(db, 'interviews'));
+    try {
+      await setDoc(
+        ref,
+        stripUndefined({
+          ...interview,
+          id: ref.id,
+          serverCreatedAt: serverTimestamp(),
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+      return ref.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `interviews/${ref.id}`);
+      throw err;
+    }
+  },
+
+  async updateInterviewDoc(
+    id: string,
+    updates: Partial<Interview>
+  ): Promise<void> {
+    try {
+      await updateDoc(
+        doc(db, 'interviews', id),
+        stripUndefined({
+          ...updates,
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `interviews/${id}`);
+      throw err;
+    }
+  },
+
+  async deleteInterviewToTrash(
+    interview: Interview,
+    deletedByUser: User
+  ): Promise<void> {
+    const trashRef = doc(collection(db, 'trash'));
+    try {
+      const batch = writeBatch(db);
+      batch.set(
+        trashRef,
+        stripUndefined({
+          id: trashRef.id,
+          entityType: 'interview',
+          entityId: interview.id,
+          data: interview,
+          deletedByUserId: deletedByUser.id,
+          deletedByUserName: deletedByUser.name,
+          deletedAt: new Date().toISOString(),
+          serverDeletedAt: serverTimestamp(),
+        })
+      );
+      batch.delete(doc(db, 'interviews', interview.id));
+      await batch.commit();
+    } catch (err) {
+      handleFirestoreError(
+        err,
+        OperationType.DELETE,
+        `interviews/${interview.id}`
+      );
+      throw err;
+    }
+  },
+
+  // Tasks (Reminders)
+  async createTaskDoc(task: ReminderTask): Promise<string> {
+    const ref = task.id
+      ? doc(db, 'tasks', task.id)
+      : doc(collection(db, 'tasks'));
+    try {
+      await setDoc(
+        ref,
+        stripUndefined({
+          ...task,
+          id: ref.id,
+          serverCreatedAt: serverTimestamp(),
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+      return ref.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `tasks/${ref.id}`);
+      throw err;
+    }
+  },
+
+  async updateTaskDoc(
+    id: string,
+    updates: Partial<ReminderTask>
+  ): Promise<void> {
+    try {
+      await updateDoc(
+        doc(db, 'tasks', id),
+        stripUndefined({
+          ...updates,
+          serverUpdatedAt: serverTimestamp(),
+        })
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `tasks/${id}`);
+      throw err;
+    }
+  },
+
+  async deleteTaskToTrash(
+    task: ReminderTask,
+    deletedByUser: User
+  ): Promise<void> {
+    const trashRef = doc(collection(db, 'trash'));
+    try {
+      const batch = writeBatch(db);
+      batch.set(
+        trashRef,
+        stripUndefined({
+          id: trashRef.id,
+          entityType: 'task',
+          entityId: task.id,
+          data: task,
+          deletedByUserId: deletedByUser.id,
+          deletedByUserName: deletedByUser.name,
+          deletedAt: new Date().toISOString(),
+          serverDeletedAt: serverTimestamp(),
+        })
+      );
+      batch.delete(doc(db, 'tasks', task.id));
+      await batch.commit();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `tasks/${task.id}`);
+      throw err;
+    }
+  },
+
+  // Edit History (Create-only collection)
+  async createEditHistoryDoc(item: EditHistoryItem): Promise<string> {
+    const ref = doc(collection(db, 'editHistory'));
+    try {
+      await setDoc(
+        ref,
+        stripUndefined({
+          ...item,
+          id: ref.id,
+          serverCreatedAt: serverTimestamp(),
+        })
+      );
+      return ref.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `editHistory/${ref.id}`);
+      throw err;
+    }
+  },
+
+  // Remarks (Create-only collection)
+  async createRemarkDoc(remarkData: Record<string, any>): Promise<string> {
+    const ref = doc(collection(db, 'remarks'));
+    try {
+      await setDoc(
+        ref,
+        stripUndefined({
+          ...remarkData,
+          id: ref.id,
+          serverCreatedAt: serverTimestamp(),
+        })
+      );
+      return ref.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `remarks/${ref.id}`);
+      throw err;
+    }
+  },
+
+  // Settings
+  async saveCompanySettingsDoc(settings: CompanySettings): Promise<void> {
+    try {
+      await setDoc(
+        doc(db, 'settings', 'company'),
+        stripUndefined({
+          ...settings,
+          updatedAt: serverTimestamp(),
+        }),
+        { merge: true }
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/company');
+      throw err;
+    }
+  },
+
+  // ==================== ADMIN STARTER DATA LOADER ====================
+  /**
+   * Admin-only: Writes the starter companies (and open job mandates) ONCE,
+   * ONLY if the clients collection is currently empty.
+   */
+  async loadStarterDataIfEmpty(
+    adminUid: string,
+    adminName: string
+  ): Promise<{ loaded: boolean; clientsCount: number; jobsCount: number }> {
+    try {
+      const existingSnap = await getDocs(collection(db, 'clients'));
+      if (!existingSnap.empty) {
         return {
-          ...c,
-          activeJobsCount: seedMatch.activeJobsCount,
-          agreementDetails:
-            !c.agreementDetails || c.agreementDetails === 'Standard placement agreement'
-              ? seedMatch.agreementDetails
-              : c.agreementDetails,
+          loaded: false,
+          clientsCount: existingSnap.size,
+          jobsCount: cachedJobs.length,
         };
       }
-      return c;
-    });
-    const existingIds = new Set(updatedRaw.map((c) => c.id));
-    const missingSeedClients = seed.clients.filter((sc) => !existingIds.has(sc.id));
-    const merged = missingSeedClients.length > 0 ? [...updatedRaw, ...missingSeedClients] : updatedRaw;
-    return normalizeClients(merged);
+
+      const seed = buildSeedData();
+      const batch = writeBatch(db);
+
+      // Write company settings
+      batch.set(
+        doc(db, 'settings', 'company'),
+        stripUndefined({
+          ...seed.companySettings,
+          updatedAt: serverTimestamp(),
+        })
+      );
+
+      // Map starter client IDs to new Firestore auto IDs
+      const clientIdMap = new Map<string, string>();
+      const normalizedSeedClients = seed.clients.map((c) =>
+        normalizeClientRecord(c)
+      );
+
+      for (const client of normalizedSeedClients) {
+        const clientRef = doc(collection(db, 'clients'));
+        clientIdMap.set(client.id, clientRef.id);
+        const updatedRemarks = (client.remarks || []).map((r) => ({
+          ...r,
+          clientId: clientRef.id,
+          authorUserId: adminUid,
+          authorName: adminName,
+        }));
+        batch.set(
+          clientRef,
+          stripUndefined({
+            ...client,
+            id: clientRef.id,
+            assignedAccountManagerId: adminUid,
+            assignedAccountManagerName: adminName,
+            remarks: updatedRemarks,
+            lastEditReason: 'Starter data initialization',
+            serverCreatedAt: serverTimestamp(),
+            serverUpdatedAt: serverTimestamp(),
+          })
+        );
+      }
+
+      for (const job of seed.jobs) {
+        const jobRef = doc(collection(db, 'jobs'));
+        const mappedClientId = clientIdMap.get(job.clientId) || job.clientId;
+        batch.set(
+          jobRef,
+          stripUndefined({
+            ...job,
+            id: jobRef.id,
+            clientId: mappedClientId,
+            assignedRecruiterIds: [adminUid],
+            assignedRecruiterNames: [adminName],
+            lastEditReason: 'Starter data initialization',
+            serverCreatedAt: serverTimestamp(),
+            serverUpdatedAt: serverTimestamp(),
+          })
+        );
+      }
+
+      await batch.commit();
+      return {
+        loaded: true,
+        clientsCount: normalizedSeedClients.length,
+        jobsCount: seed.jobs.length,
+      };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'clients/starterData');
+      throw err;
+    }
   },
-  saveClients(clients: Client[]): void {
-    writeJson(STORAGE_KEYS.CLIENTS, clients);
+
+  // ==================== COMPATIBILITY / SYNCHRONOUS HELPERS ====================
+  ensureSeedDataInitialized(): void {
+    // No-op: Automatic seeding is removed in Firebase mode. Admin uses "Load starter data".
   },
+  resetToDemoSeedData() {
+    const seed = buildSeedData();
+    return {
+      ...seed,
+      clients: seed.clients.map((c) => normalizeClientRecord(c)),
+    };
+  },
+  isSessionLoggedIn(): boolean {
+    return !!auth.currentUser;
+  },
+  getSessionUserId(): string {
+    return auth.currentUser?.uid || '';
+  },
+  getLastLoginEmail(): string {
+    return auth.currentUser?.email || '';
+  },
+  startSession(_userId: string, _email: string): void {},
+  setSessionUserId(_userId: string): void {},
+  clearSession(): void {
+    signOut(auth).catch(() => {});
+  },
+
+  getUsers(): User[] {
+    return cachedUsers;
+  },
+  saveUsers(_users: User[]): void {},
+
+  getCandidates(): Candidate[] {
+    return cachedCandidates;
+  },
+  saveCandidates(_candidates: Candidate[]): void {},
+
+  getClients(): Client[] {
+    return cachedClients;
+  },
+  saveClients(_clients: Client[]): void {},
 
   getJobs(): JobOpening[] {
-    const seed = buildSeedData();
-    const raw = readJson<JobOpening[]>(STORAGE_KEYS.JOBS, seed.jobs);
-    const seedMap = new Map(seed.jobs.map((sj) => [sj.id, sj]));
-    const updatedRaw = raw.map((j) => {
-      const seedMatch = seedMap.get(j.id);
-      return seedMatch ? { ...seedMatch, ...j, title: seedMatch.title, description: j.description || seedMatch.description } : j;
-    });
-    const existingIds = new Set(updatedRaw.map((j) => j.id));
-    const missingSeedJobs = seed.jobs.filter((sj) => !existingIds.has(sj.id));
-    return missingSeedJobs.length > 0 ? [...updatedRaw, ...missingSeedJobs] : updatedRaw;
+    return cachedJobs;
   },
-  saveJobs(jobs: JobOpening[]): void {
-    writeJson(STORAGE_KEYS.JOBS, jobs);
-  },
+  saveJobs(_jobs: JobOpening[]): void {},
 
   getPipeline(): PipelineItem[] {
-    const seed = buildSeedData();
-    return readJson<PipelineItem[]>(STORAGE_KEYS.PIPELINE, seed.pipeline);
+    return cachedPipeline;
   },
-  savePipeline(pipeline: PipelineItem[]): void {
-    writeJson(STORAGE_KEYS.PIPELINE, pipeline);
-  },
+  savePipeline(_pipeline: PipelineItem[]): void {},
 
   getInterviews(): Interview[] {
-    const seed = buildSeedData();
-    return readJson<Interview[]>(STORAGE_KEYS.INTERVIEWS, seed.interviews);
+    return cachedInterviews;
   },
-  saveInterviews(interviews: Interview[]): void {
-    writeJson(STORAGE_KEYS.INTERVIEWS, interviews);
-  },
+  saveInterviews(_interviews: Interview[]): void {},
 
   getReminders(): ReminderTask[] {
-    const seed = buildSeedData();
-    return readJson<ReminderTask[]>(STORAGE_KEYS.REMINDERS, seed.reminders);
+    return cachedTasks;
   },
-  saveReminders(reminders: ReminderTask[]): void {
-    writeJson(STORAGE_KEYS.REMINDERS, reminders);
-  },
+  saveReminders(_reminders: ReminderTask[]): void {},
 
   getActivities(): ActivityLogItem[] {
-    const seed = buildSeedData();
-    return readJson<ActivityLogItem[]>(STORAGE_KEYS.ACTIVITIES, seed.activities);
+    return cachedActivities;
   },
   saveActivities(activities: ActivityLogItem[]): void {
-    writeJson(STORAGE_KEYS.ACTIVITIES, activities);
+    cachedActivities = activities;
   },
 
   getCompanySettings(): CompanySettings {
-    const seed = buildSeedData();
-    return readJson<CompanySettings>(STORAGE_KEYS.SETTINGS, seed.companySettings);
+    return cachedSettings;
   },
   saveCompanySettings(settings: CompanySettings): void {
-    writeJson(STORAGE_KEYS.SETTINGS, settings);
+    cachedSettings = settings;
+    this.saveCompanySettingsDoc(settings).catch(() => {});
   },
 
   getEditHistories(): EditHistoryItem[] {
-    return readJson<EditHistoryItem[]>(STORAGE_KEYS.EDIT_HISTORIES, []);
+    return cachedEditHistory;
   },
-  saveEditHistories(items: EditHistoryItem[]): void {
-    writeJson(STORAGE_KEYS.EDIT_HISTORIES, items);
-  },
+  saveEditHistories(_items: EditHistoryItem[]): void {},
 
   getReadNotifIds(): string[] {
-    return readJson<string[]>(STORAGE_KEYS.READ_NOTIFS, []);
+    return [];
   },
-  saveReadNotifIds(ids: string[]): void {
-    writeJson(STORAGE_KEYS.READ_NOTIFS, ids);
-  },
+  saveReadNotifIds(_ids: string[]): void {},
 
   getExportLogs(): ExportLogItem[] {
-    return readJson<ExportLogItem[]>(STORAGE_KEYS.EXPORT_LOGS, []);
+    return [];
   },
-  saveExportLogs(logs: ExportLogItem[]): void {
-    writeJson(STORAGE_KEYS.EXPORT_LOGS, logs);
-  },
+  saveExportLogs(_logs: ExportLogItem[]): void {},
 
   getImportLogs(): ImportLogItem[] {
-    return readJson<ImportLogItem[]>(STORAGE_KEYS.IMPORT_LOGS, []);
+    return [];
   },
-  saveImportLogs(logs: ImportLogItem[]): void {
-    writeJson(STORAGE_KEYS.IMPORT_LOGS, logs);
-  },
+  saveImportLogs(_logs: ImportLogItem[]): void {},
 
-  // Export all current workspace data as a JSON snapshot
   exportAllDemoDataAsJson(): string {
     const payload = {
       exportedAt: new Date().toISOString(),
-      mode: 'DEMO_MODE',
-      companySettings: this.getCompanySettings(),
-      users: this.getUsers().map(({ password, ...rest }) => rest),
-      clients: this.getClients(),
-      jobs: this.getJobs(),
-      candidates: this.getCandidates(),
-      pipeline: this.getPipeline(),
-      interviews: this.getInterviews(),
-      reminders: this.getReminders(),
-      editHistories: this.getEditHistories(),
-      activities: this.getActivities(),
+      mode: 'FIREBASE_CLOUD_LIVE',
+      companySettings: cachedSettings,
+      users: cachedUsers.map(({ password, ...rest }) => rest),
+      clients: cachedClients,
+      jobs: cachedJobs,
+      candidates: cachedCandidates,
+      pipeline: cachedPipeline,
+      interviews: cachedInterviews,
+      tasks: cachedTasks,
+      editHistories: cachedEditHistory,
+      activities: cachedActivities,
     };
     return JSON.stringify(payload, null, 2);
   },

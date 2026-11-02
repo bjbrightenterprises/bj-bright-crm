@@ -1,125 +1,183 @@
 {
   "entities": {
-    "Candidate": {
-      "title": "Candidate",
-      "description": "Job applicant and candidate record",
+    "User": {
+      "title": "User",
+      "description": "CRM Staff Member profile and role-based access control record",
       "type": "object",
       "properties": {
-        "fullName": { "type": "string", "maxLength": 100 },
-        "phone": { "type": "string", "maxLength": 20 },
-        "email": { "type": "string", "maxLength": 120 },
-        "city": { "type": "string", "maxLength": 60 },
-        "currentCompany": { "type": "string", "maxLength": 100 },
-        "currentSalaryLPA": { "type": "number" },
-        "expectedSalaryLPA": { "type": "number" },
-        "experienceYears": { "type": "number" },
-        "status": { "type": "string", "maxLength": 40 },
-        "source": { "type": "string", "maxLength": 40 },
-        "assignedRecruiterId": { "type": "string", "maxLength": 100 }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "manager", "hr_executive", "recruiter"] },
+        "designation": { "type": "string" },
+        "avatar": { "type": "string" },
+        "active": { "type": "boolean" }
       },
-      "required": ["fullName", "phone", "email", "status"]
+      "required": ["id", "name", "email", "role", "active"]
+    },
+    "Candidate": {
+      "title": "Candidate",
+      "description": "Job seeker candidate record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "city": { "type": "string" },
+        "assignedRecruiterId": { "type": "string" },
+        "assignedRecruiterName": { "type": "string" },
+        "status": { "type": "string" },
+        "lastEditReason": { "type": "string" }
+      },
+      "required": ["id", "fullName", "phone", "assignedRecruiterId", "status"]
     },
     "Client": {
       "title": "Client",
-      "description": "Corporate client company",
+      "description": "Corporate client company record across Green, Blue, and Red sections",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "maxLength": 120 },
-        "industry": { "type": "string", "maxLength": 100 },
-        "city": { "type": "string", "maxLength": 60 },
-        "commissionPercent": { "type": "number" },
-        "status": { "type": "string", "maxLength": 20 }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "industry": { "type": "string" },
+        "city": { "type": "string" },
+        "address": { "type": "string" },
+        "section": { "type": "string", "enum": ["Green", "Blue", "Red"] },
+        "status": { "type": "string" },
+        "lastEditReason": { "type": "string" }
       },
-      "required": ["name", "industry", "status"]
+      "required": ["id", "name", "city", "section"]
     },
     "JobOpening": {
       "title": "JobOpening",
-      "description": "Client job vacancy",
+      "description": "Client job mandate / opening",
       "type": "object",
       "properties": {
-        "title": { "type": "string", "maxLength": 120 },
-        "clientId": { "type": "string", "maxLength": 100 },
-        "location": { "type": "string", "maxLength": 100 },
-        "priority": { "type": "string", "maxLength": 20 },
-        "status": { "type": "string", "maxLength": 20 }
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "status": { "type": "string" },
+        "lastEditReason": { "type": "string" }
       },
-      "required": ["title", "clientId", "status"]
+      "required": ["id", "title", "clientId", "clientName", "status"]
     },
     "PipelineItem": {
       "title": "PipelineItem",
-      "description": "Kanban recruitment stage entry",
+      "description": "Candidate hiring pipeline stage record",
       "type": "object",
       "properties": {
-        "candidateId": { "type": "string", "maxLength": 100 },
-        "jobId": { "type": "string", "maxLength": 100 },
-        "stage": { "type": "string", "maxLength": 40 }
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "jobId": { "type": "string" },
+        "stage": { "type": "string" },
+        "assignedRecruiterId": { "type": "string" }
       },
-      "required": ["candidateId", "jobId", "stage"]
+      "required": ["id", "candidateId", "jobId", "stage", "assignedRecruiterId"]
     },
     "Interview": {
       "title": "Interview",
-      "description": "Scheduled candidate interview or follow-up",
+      "description": "Scheduled candidate interview record",
       "type": "object",
       "properties": {
-        "candidateId": { "type": "string", "maxLength": 100 },
-        "dateTime": { "type": "string", "maxLength": 50 },
-        "mode": { "type": "string", "maxLength": 40 },
-        "status": { "type": "string", "maxLength": 30 }
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "jobId": { "type": "string" },
+        "assignedToRecruiterId": { "type": "string" },
+        "status": { "type": "string" }
       },
-      "required": ["candidateId", "dateTime", "mode", "status"]
+      "required": ["id", "candidateId", "assignedToRecruiterId", "status"]
     },
-    "ActivityLog": {
-      "title": "ActivityLog",
-      "description": "Audit event log entry",
+    "Task": {
+      "title": "Task",
+      "description": "Follow-up reminder or assigned task",
       "type": "object",
       "properties": {
-        "userId": { "type": "string", "maxLength": 100 },
-        "action": { "type": "string", "maxLength": 100 },
-        "module": { "type": "string", "maxLength": 40 },
-        "timestamp": { "type": "string", "maxLength": 50 }
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "assignedToUserId": { "type": "string" },
+        "assignedByUserId": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Completed"] }
       },
-      "required": ["userId", "action", "module", "timestamp"]
+      "required": ["id", "title", "assignedToUserId", "assignedByUserId", "status"]
     },
-    "User": {
-      "title": "User",
-      "description": "CRM team member",
+    "EditHistory": {
+      "title": "EditHistory",
+      "description": "Create-only audit trail of edits to candidates, clients, and jobs",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "maxLength": 100 },
-        "email": { "type": "string", "maxLength": 120 },
-        "role": { "type": "string", "maxLength": 30 }
+        "id": { "type": "string" },
+        "entityId": { "type": "string" },
+        "entityType": { "type": "string", "enum": ["candidate", "client", "job"] },
+        "reason": { "type": "string" }
       },
-      "required": ["name", "email", "role"]
+      "required": ["id", "entityId", "entityType", "reason"]
+    },
+    "Remark": {
+      "title": "Remark",
+      "description": "Create-only remark log for candidates and companies",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "entityId": { "type": "string" },
+        "text": { "type": "string" },
+        "authorUserId": { "type": "string" }
+      },
+      "required": ["id", "text", "authorUserId"]
+    },
+    "Trash": {
+      "title": "Trash",
+      "description": "Soft-deleted records archive managed by Admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "entityType": { "type": "string" },
+        "entityId": { "type": "string" }
+      },
+      "required": ["id", "entityType", "entityId"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "CRM users collection"
+    },
     "/candidates/{candidateId}": {
-      "schema": "Candidate",
-      "description": "Collection of candidate records and resumes"
+      "schema": { "$ref": "#/entities/Candidate" },
+      "description": "Candidates collection"
     },
     "/clients/{clientId}": {
-      "schema": "Client",
-      "description": "Corporate client companies"
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "Client companies collection"
     },
     "/jobs/{jobId}": {
-      "schema": "JobOpening",
-      "description": "Job openings created for clients"
+      "schema": { "$ref": "#/entities/JobOpening" },
+      "description": "Open job mandates collection"
     },
     "/pipeline/{pipelineId}": {
-      "schema": "PipelineItem",
-      "description": "Candidate pipeline tracking across stages"
+      "schema": { "$ref": "#/entities/PipelineItem" },
+      "description": "Recruitment pipeline items"
     },
     "/interviews/{interviewId}": {
-      "schema": "Interview",
-      "description": "Interviews and follow-ups"
+      "schema": { "$ref": "#/entities/Interview" },
+      "description": "Interviews collection"
     },
-    "/activities/{activityId}": {
-      "schema": "ActivityLog",
-      "description": "Audit trail log"
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Assigned tasks and reminders"
     },
-    "/users/{userId}": {
-      "schema": "User",
-      "description": "CRM users and roles"
+    "/editHistory/{historyId}": {
+      "schema": { "$ref": "#/entities/EditHistory" },
+      "description": "Immutable edit history logs"
+    },
+    "/remarks/{remarkId}": {
+      "schema": { "$ref": "#/entities/Remark" },
+      "description": "Immutable remarks collection"
+    },
+    "/trash/{trashId}": {
+      "schema": { "$ref": "#/entities/Trash" },
+      "description": "Deleted records archive (Admin only)"
     }
   }
 }

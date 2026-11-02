@@ -57,6 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const {
     currentUser,
+    syncStatus,
     changeMyPassword,
     isDarkMode,
     toggleDarkMode,
@@ -387,6 +388,37 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Actions & Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Real-time Cloud Sync Status Indicator */}
+        <div
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+            syncStatus === 'Synced'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+              : syncStatus === 'Syncing...'
+              ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+              : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+          }`}
+          title={
+            syncStatus === 'Offline'
+              ? 'Offline - changes will sync when you are back online'
+              : `Firebase Cloud Status: ${syncStatus}`
+          }
+        >
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              syncStatus === 'Synced'
+                ? 'bg-emerald-500'
+                : syncStatus === 'Syncing...'
+                ? 'bg-amber-500 animate-pulse'
+                : 'bg-rose-500'
+            }`}
+          />
+          <span className="truncate max-w-[210px] sm:max-w-none">
+            {syncStatus === 'Offline'
+              ? 'Offline - changes will sync when you are back online'
+              : syncStatus}
+          </span>
+        </div>
+
         {/* Quick Add Dropdown */}
         <div ref={quickAddRef} className="relative">
           <button

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { onAuthStateChanged, Unsubscribe } from 'firebase/auth';
 import {
   Candidate,
   Client,
@@ -8,7 +9,6 @@ import {
   ActivityLogItem,
   User,
   CompanySettings,
-  UserRole,
   PipelineStage,
   CandidateStatus,
   ReminderTask,
@@ -23,15 +23,22 @@ import {
   sectionToClientStatus,
   CLIENT_SECTION_LABELS,
 } from '../types/crm';
-import {
-  INITIAL_USERS,
-} from '../lib/mockData';
-import { dataService } from '../lib/dataService';
-import {
-  FirebaseConfigOptions,
-} from '../lib/firebase';
+import { INITIAL_USERS, buildSeedData } from '../lib/mockData';
+import { dataService, SyncState } from '../lib/dataService';
+import { auth, FIREBASE_CONFIG, FirebaseConfig } from '../lib/firebase';
 
 interface CRMContextType {
+  // Firebase Auth & Sync State
+  authLoading: boolean;
+  isAuthenticated: boolean;
+  accessDeniedMessage: string;
+  clearAccessDeniedMessage: () => void;
+  syncStatus: SyncState;
+  loginWithFirebase: (email: string, password: string) => Promise<void>;
+  logoutFromFirebase: () => Promise<void>;
+  sendForgotPasswordEmail: (email: string) => Promise<void>;
+  loadStarterData: () => Promise<{ loaded: boolean; clientsCount: number; jobsCount: number }>;
+
   currentUser: User;
   switchUser: (userId: string) => void;
   changeMyPassword: (newPassword: string) => void;
@@ -53,14 +60,23 @@ interface CRMContextType {
   candidates: Candidate[];
   visibleCandidates: Candidate[];
   trashCandidates: Candidate[];
-  addCandidate: (c: Omit<Candidate, 'id' | 'createdAt' | 'updatedAt' | 'notes'>) => { success: boolean; duplicateWarning?: string; candidate?: Candidate };
+  addCandidate: (c: Omit<Candidate, 'id' | 'createdAt' | 'updatedAt' | 'notes'>) => {
+    success: boolean;
+    duplicateWarning?: string;
+    candidate?: Candidate;
+  };
   updateCandidate: (id: string, updates: Partial<Candidate>, reason?: string) => void;
-  deleteCandidate: (id: string) => void; // Soft delete to trash (Admin only)
+  deleteCandidate: (id: string) => void;
   restoreCandidate: (id: string) => void;
   addCandidateNote: (candidateId: string, text: string) => void;
   addCandidateRemark: (candidateId: string, text: string, statusChangedTo?: CandidateStatus) => void;
   deleteCandidateRemark: (candidateId: string, remarkId: string) => void;
-  activeStatusRemarkModal: { candidate: Candidate; newStatus?: CandidateStatus; isStatusChange: boolean; bulkCandidateIds?: string[] } | null;
+  activeStatusRemarkModal: {
+    candidate: Candidate;
+    newStatus?: CandidateStatus;
+    isStatusChange: boolean;
+    bulkCandidateIds?: string[];
+  } | null;
   openStatusRemarkModal: (candidate: Candidate, newStatus: CandidateStatus) => void;
   openBulkStatusRemarkModal: (candidateIds: string[], newStatus: CandidateStatus) => void;
   openAddRemarkModal: (candidate: Candidate) => void;
@@ -103,7 +119,9 @@ interface CRMContextType {
   deleteJob: (id: string) => void;
   restoreJob: (id: string) => void;
   bulkImportJobs: (newJobs: Partial<JobOpening>[]) => number;
-  getMatchingCandidates: (job: JobOpening) => { candidate: Candidate; matchScore: number; matchReasons: string[] }[];
+  getMatchingCandidates: (
+    job: JobOpening
+  ) => { candidate: Candidate; matchScore: number; matchReasons: string[] }[];
 
   // Candidate Import with update support
   processCandidateImport: (
@@ -138,7 +156,9 @@ interface CRMContextType {
   reminders: ReminderTask[];
   visibleReminders: ReminderTask[];
   completedReminders: ReminderTask[];
-  addReminder: (r: Omit<ReminderTask, 'id' | 'createdAt' | 'assignedByUserId' | 'assignedByUserName'>) => ReminderTask;
+  addReminder: (
+    r: Omit<ReminderTask, 'id' | 'createdAt' | 'assignedByUserId' | 'assignedByUserName'>
+  ) => ReminderTask;
   updateReminder: (id: string, updates: Partial<ReminderTask>) => void;
   deleteReminder: (id: string) => void;
   toggleReminderStatus: (id: string) => void;
@@ -161,18 +181,18 @@ interface CRMContextType {
   // Settings & Users
   companySettings: CompanySettings;
   updateCompanySettings: (settings: Partial<CompanySettings>) => void;
-  addUser: (u: Omit<User, 'id'>) => void;
+  addUser: (u: Omit<User, 'id'>) => Promise<void>;
   updateUser: (id: string, updates: Partial<User>) => void;
-  toggleUserStatus: (id: string) => void; // Disable / Enable user
+  toggleUserStatus: (id: string) => void;
   deleteUser: (id: string) => void;
   reassignmentTargetUser: { user: User; type: 'disable' | 'delete' } | null;
   setReassignmentTargetUser: (val: { user: User; type: 'disable' | 'delete' } | null) => void;
   reassignAndResolveUser: (oldUserId: string, newUserId: string, actionType: 'disable' | 'delete') => void;
 
-  // Demo Mode & Data Controls
+  // Cloud & Data Controls
   isFirebaseConfigured: boolean;
-  firebaseConfig: FirebaseConfigOptions | null;
-  saveFirebaseSettings: (cfg: FirebaseConfigOptions) => void;
+  firebaseConfig: FirebaseConfig | null;
+  saveFirebaseSettings: (cfg: FirebaseConfig) => void;
   removeFirebaseSettings: () => void;
   resetAllData: () => void;
   downloadDemoData: () => void;
@@ -181,14 +201,7 @@ interface CRMContextType {
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Ensure realistic demo seed data is loaded on first run via the single dataService
-  useState(() => {
-    dataService.ensureSeedDataInitialized();
-  });
-
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return dataService.getTheme() === 'dark';
-  });
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => dataService.getTheme() === 'dark');
 
   const toggleDarkMode = () => {
     setIsDarkMode((prev) => {
@@ -213,105 +226,211 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [globalSearch, setGlobalSearch] = useState('');
 
-  const [users, setUsers] = useState<User[]>(() => dataService.getUsers());
-  const [currentUserId, setCurrentUserId] = useState<string>(() => dataService.getSessionUserId());
-
-  const currentUser = useMemo(() => {
-    const found = users.find((u) => u.id === currentUserId);
-    if (found && !found.active) {
-      const activeUser = users.find((u) => u.active) || users[0];
-      return activeUser;
-    }
-    return found || users[0] || INITIAL_USERS[0];
-  }, [users, currentUserId]);
-
-  const switchUser = (userId: string) => {
-    const target = users.find((u) => u.id === userId);
-    if (target && !target.active) {
-      return;
-    }
-    setCurrentUserId(userId);
-    dataService.setSessionUserId(userId);
-    if (target) {
-      logActivity(
-        'system',
-        'User Signed In',
-        `Signed in as ${target.name} (${target.role.toUpperCase()})`
-      );
-    }
-  };
-
-  const changeMyPassword = (newPassword: string) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === currentUser.id ? { ...u, password: newPassword } : u))
-    );
-    logActivity('system', 'Password Updated', `${currentUser.name} updated their account password`);
-  };
-
-  const [candidates, setCandidates] = useState<Candidate[]>(() => dataService.getCandidates());
-  const [clients, setClients] = useState<Client[]>(() => dataService.getClients());
-  const [jobs, setJobs] = useState<JobOpening[]>(() => dataService.getJobs());
-  const [pipeline, setPipeline] = useState<PipelineItem[]>(() => dataService.getPipeline());
-  const [interviews, setInterviews] = useState<Interview[]>(() => dataService.getInterviews());
-  const [activities, setActivities] = useState<ActivityLogItem[]>(() => dataService.getActivities());
-  const [companySettings, setCompanySettings] = useState<CompanySettings>(() =>
-    dataService.getCompanySettings()
+  // Auth & Real-time Sync states
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState<string>('');
+  const [authenticatedProfile, setAuthenticatedProfile] = useState<User | null>(null);
+  const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
   );
-  const [reminders, setReminders] = useState<ReminderTask[]>(() => dataService.getReminders());
-  const [editHistories, setEditHistories] = useState<EditHistoryItem[]>(() =>
-    dataService.getEditHistories()
+  const [hasPendingWrites, setHasPendingWrites] = useState<boolean>(false);
+
+  // Firestore Collections State
+  const [users, setUsers] = useState<User[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [jobs, setJobs] = useState<JobOpening[]>([]);
+  const [pipeline, setPipeline] = useState<PipelineItem[]>([]);
+  const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [reminders, setReminders] = useState<ReminderTask[]>([]);
+  const [editHistories, setEditHistories] = useState<EditHistoryItem[]>([]);
+  const [companySettings, setCompanySettings] = useState<CompanySettings>(
+    () => buildSeedData().companySettings
   );
-  const [readNotifIds, setReadNotifIds] = useState<string[]>(() => dataService.getReadNotifIds());
-  const [exportLogs, setExportLogs] = useState<ExportLogItem[]>(() => dataService.getExportLogs());
-  const [importLogs, setImportLogs] = useState<ImportLogItem[]>(() => dataService.getImportLogs());
-
-  const [reassignmentTargetUser, setReassignmentTargetUser] = useState<{ user: User; type: 'disable' | 'delete' } | null>(null);
-
-  const [firebaseConfig] = useState<FirebaseConfigOptions | null>(null);
-  const [isFirebaseConfigured] = useState<boolean>(false);
-
+  const [activities, setActivities] = useState<ActivityLogItem[]>([]);
+  const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
+  const [exportLogs, setExportLogs] = useState<ExportLogItem[]>([]);
+  const [importLogs, setImportLogs] = useState<ImportLogItem[]>([]);
+  const [reassignmentTargetUser, setReassignmentTargetUser] = useState<{
+    user: User;
+    type: 'disable' | 'delete';
+  } | null>(null);
   const [viewAllToggle, setViewAllToggle] = useState<boolean>(false);
 
-  // Persist all changes via the single dataService
+  // Track browser online/offline state
   useEffect(() => {
-    dataService.saveUsers(users);
-  }, [users]);
+    const handleOnline = () => setIsBrowserOnline(true);
+    const handleOffline = () => setIsBrowserOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const syncStatus: SyncState = useMemo(() => {
+    if (!isBrowserOnline) return 'Offline';
+    if (hasPendingWrites) return 'Syncing...';
+    return 'Synced';
+  }, [isBrowserOnline, hasPendingWrites]);
+
+  const handleSyncMeta = (pending: boolean, _fromCache: boolean) => {
+    setHasPendingWrites(pending);
+  };
+
+  // Listen to Firebase Auth state & User Profile in users/{uid}
   useEffect(() => {
-    dataService.saveCandidates(candidates);
-  }, [candidates]);
+    let profileUnsub: Unsubscribe | null = null;
+
+    const authUnsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
+
+      if (!fbUser) {
+        setAuthenticatedProfile(null);
+        setIsAuthenticated(false);
+        setAuthLoading(false);
+        return;
+      }
+
+      setAuthLoading(true);
+      try {
+        const initialProfile = await dataService.verifyOrBootstrapUserProfile(
+          fbUser.uid,
+          fbUser.email
+        );
+
+        if (!initialProfile || initialProfile.active === false) {
+          setAccessDeniedMessage('Your access is not active. Please contact your Admin.');
+          await dataService.logoutFirebase();
+          setAuthenticatedProfile(null);
+          setIsAuthenticated(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        setAccessDeniedMessage('');
+        setAuthenticatedProfile(initialProfile);
+        setIsAuthenticated(true);
+        setAuthLoading(false);
+
+        // Real-time subscription to users/{uid} so if Admin disables access, user is signed out immediately
+        profileUnsub = dataService.subscribeToUserProfile(fbUser.uid, async (liveProfile) => {
+          if (!liveProfile || liveProfile.active === false) {
+            setAccessDeniedMessage('Your access is not active. Please contact your Admin.');
+            await dataService.logoutFirebase();
+            setAuthenticatedProfile(null);
+            setIsAuthenticated(false);
+          } else {
+            setAuthenticatedProfile(liveProfile);
+          }
+        });
+      } catch {
+        setAccessDeniedMessage('Your access is not active. Please contact your Admin.');
+        await dataService.logoutFirebase();
+        setAuthenticatedProfile(null);
+        setIsAuthenticated(false);
+        setAuthLoading(false);
+      }
+    });
+
+    return () => {
+      authUnsub();
+      if (profileUnsub) profileUnsub();
+    };
+  }, []);
+
+  // Attach role-based Firestore onSnapshot listeners when authenticated & active
   useEffect(() => {
-    dataService.saveClients(clients);
-  }, [clients]);
-  useEffect(() => {
-    dataService.saveJobs(jobs);
-  }, [jobs]);
-  useEffect(() => {
-    dataService.savePipeline(pipeline);
-  }, [pipeline]);
-  useEffect(() => {
-    dataService.saveInterviews(interviews);
-  }, [interviews]);
-  useEffect(() => {
-    dataService.saveActivities(activities);
-  }, [activities]);
-  useEffect(() => {
-    dataService.saveCompanySettings(companySettings);
-  }, [companySettings]);
-  useEffect(() => {
-    dataService.saveReminders(reminders);
-  }, [reminders]);
-  useEffect(() => {
-    dataService.saveEditHistories(editHistories);
-  }, [editHistories]);
-  useEffect(() => {
-    dataService.saveReadNotifIds(readNotifIds);
-  }, [readNotifIds]);
-  useEffect(() => {
-    dataService.saveExportLogs(exportLogs);
-  }, [exportLogs]);
-  useEffect(() => {
-    dataService.saveImportLogs(importLogs);
-  }, [importLogs]);
+    if (!isAuthenticated || !authenticatedProfile || !authenticatedProfile.active) {
+      setUsers([]);
+      setCandidates([]);
+      setClients([]);
+      setJobs([]);
+      setPipeline([]);
+      setInterviews([]);
+      setReminders([]);
+      setEditHistories([]);
+      return;
+    }
+
+    const uid = authenticatedProfile.id;
+    const role = authenticatedProfile.role;
+
+    const unsubs: Unsubscribe[] = [
+      dataService.subscribeToUsers(setUsers, handleSyncMeta),
+      dataService.subscribeToCandidates(uid, role, setCandidates, handleSyncMeta),
+      dataService.subscribeToClients(setClients, handleSyncMeta),
+      dataService.subscribeToJobs(setJobs, handleSyncMeta),
+      dataService.subscribeToPipeline(uid, role, setPipeline, handleSyncMeta),
+      dataService.subscribeToInterviews(uid, role, setInterviews, handleSyncMeta),
+      dataService.subscribeToTasks(uid, role, setReminders, handleSyncMeta),
+      dataService.subscribeToEditHistory(setEditHistories),
+      dataService.subscribeToSettings(setCompanySettings),
+    ];
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [isAuthenticated, authenticatedProfile?.id, authenticatedProfile?.role, authenticatedProfile?.active]);
+
+  const currentUser: User = useMemo(() => {
+    if (authenticatedProfile) {
+      const fromList = users.find((u) => u.id === authenticatedProfile.id);
+      return fromList || authenticatedProfile;
+    }
+    return users[0] || INITIAL_USERS[0];
+  }, [authenticatedProfile, users]);
+
+  const clearAccessDeniedMessage = () => setAccessDeniedMessage('');
+
+  const loginWithFirebase = async (email: string, password: string) => {
+    setAccessDeniedMessage('');
+    const fbUser = await dataService.loginWithEmail(email, password);
+    const profile = await dataService.verifyOrBootstrapUserProfile(fbUser.uid, fbUser.email);
+    if (!profile || profile.active === false) {
+      await dataService.logoutFirebase();
+      const msg = 'Your access is not active. Please contact your Admin.';
+      setAccessDeniedMessage(msg);
+      throw new Error(msg);
+    }
+  };
+
+  const logoutFromFirebase = async () => {
+    await dataService.logoutFirebase();
+    setAuthenticatedProfile(null);
+    setIsAuthenticated(false);
+  };
+
+  const sendForgotPasswordEmail = async (email: string) => {
+    await dataService.sendPasswordReset(email);
+  };
+
+  const loadStarterData = async () => {
+    if (currentUser.role !== 'admin') {
+      throw new Error('Only Admin can load starter data.');
+    }
+    const res = await dataService.loadStarterDataIfEmpty(currentUser.id, currentUser.name);
+    if (res.loaded) {
+      logActivity(
+        'system',
+        'Starter Data Loaded',
+        `Loaded ${res.clientsCount} starter companies and ${res.jobsCount} open job mandates into Firestore`
+      );
+    }
+    return res;
+  };
+
+  const switchUser = (_userId: string) => {};
+
+  const changeMyPassword = (newPassword: string) => {
+    dataService.updateCurrentUserPassword(newPassword).catch(() => {});
+    logActivity('system', 'Password Updated', `${currentUser.name} updated their account password`);
+  };
 
   // Permissions
   const canManageUsers = currentUser.role === 'admin';
@@ -342,13 +461,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return activeCandidates.filter((c) => c.assignedRecruiterId === currentUser.id);
   }, [activeCandidates, currentUser, viewAllToggle]);
 
-  const visibleClients = useMemo(() => {
-    return activeClients;
-  }, [activeClients]);
-
-  const visibleJobs = useMemo(() => {
-    return activeJobs;
-  }, [activeJobs]);
+  const visibleClients = useMemo(() => activeClients, [activeClients]);
+  const visibleJobs = useMemo(() => activeJobs, [activeJobs]);
 
   const visiblePipeline = useMemo(() => {
     if (currentUser.role === 'admin' || currentUser.role === 'manager' || viewAllToggle) {
@@ -365,21 +479,29 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [interviews, currentUser, viewAllToggle]);
 
   const activeReminders = useMemo(() => reminders.filter((r) => r.status === 'Pending'), [reminders]);
-  const completedReminders = useMemo(() => reminders.filter((r) => r.status === 'Completed'), [reminders]);
+  const completedReminders = useMemo(
+    () => reminders.filter((r) => r.status === 'Completed'),
+    [reminders]
+  );
 
   const visibleReminders = useMemo(() => {
-    if (currentUser.role === 'admin' || viewAllToggle) {
+    if (currentUser.role === 'admin' || currentUser.role === 'manager' || viewAllToggle) {
       return activeReminders;
     }
     if (currentUser.role === 'hr_executive') {
-      return activeReminders.filter((r) => r.assignedToUserId === currentUser.id || r.assignedByUserId === currentUser.id);
+      return activeReminders.filter(
+        (r) =>
+          r.assignedToUserId === currentUser.id ||
+          r.assignedByUserId === currentUser.id ||
+          (r as any).createdByUserId === currentUser.id
+      );
     }
     return activeReminders.filter((r) => r.assignedToUserId === currentUser.id);
   }, [activeReminders, currentUser, viewAllToggle]);
 
   const logActivity = (category: ActivityLogItem['category'], action: string, details: string) => {
     const newAct: ActivityLogItem = {
-      id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: dataService.createAutoId('activities'),
       userId: currentUser.id,
       userName: currentUser.name,
       userRole: currentUser.role,
@@ -444,18 +566,20 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reason: string,
     changes: { field: string; oldValue: any; newValue: any }[]
   ) => {
+    const cleanReason = reason && reason.trim().length > 0 ? reason.trim() : 'Record updated';
     const item: EditHistoryItem = {
-      id: `eh_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: dataService.createAutoId('editHistory'),
       entityId,
       entityType,
       editedByUserId: currentUser.id,
       editedByUserName: currentUser.name,
       editedByUserRole: currentUser.role,
       timestamp: new Date().toISOString(),
-      reason,
+      reason: cleanReason,
       changes,
     };
     setEditHistories((prev) => [item, ...prev]);
+    dataService.createEditHistoryDoc(item).catch(() => {});
   };
 
   const getEditHistory = (entityId: string) => {
@@ -476,14 +600,19 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCandidate = (c: Omit<Candidate, 'id' | 'createdAt' | 'updatedAt' | 'notes'>) => {
+    const autoId = dataService.createAutoId('candidates');
+    const nowIso = new Date().toISOString();
     const newCand: Candidate = {
       ...c,
-      id: `cand_${Date.now()}`,
+      id: autoId,
+      assignedRecruiterId: c.assignedRecruiterId || currentUser.id,
+      assignedRecruiterName: c.assignedRecruiterName || currentUser.name,
       notes: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
     setCandidates((prev) => [newCand, ...prev]);
+    dataService.createCandidateDoc(newCand).catch(() => {});
     logActivity('candidate', 'Candidate Added', `Added candidate ${newCand.fullName} (${newCand.phone})`);
     return { success: true, candidate: newCand };
   };
@@ -492,6 +621,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const old = candidates.find((c) => c.id === id);
     if (!old) return;
 
+    const cleanReason = reason && reason.trim().length > 0 ? reason.trim() : 'Candidate updated details';
     const changes: { field: string; oldValue: any; newValue: any }[] = [];
     Object.keys(updates).forEach((key) => {
       const k = key as keyof Candidate;
@@ -505,43 +635,64 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     if (changes.length > 0) {
-      addEditHistory(id, 'candidate', reason || 'Candidate updated details', changes);
+      addEditHistory(id, 'candidate', cleanReason, changes);
     }
 
+    const updatedAt = new Date().toISOString();
     setCandidates((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c))
+      prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt } : c))
     );
-    logActivity('candidate', 'Candidate Updated', `Updated profile for ${old.fullName}. Reason: ${reason}`);
+    dataService.updateCandidateDoc(id, { ...updates, updatedAt }, cleanReason).catch(() => {});
+    logActivity('candidate', 'Candidate Updated', `Updated profile for ${old.fullName}. Reason: ${cleanReason}`);
   };
 
   const deleteCandidate = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can delete records.');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     const target = candidates.find((c) => c.id === id);
-    setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c)));
-    logActivity('candidate', 'Candidate Moved to Trash', `Moved candidate ${target?.fullName || id} to Trash`);
+    if (!target) return;
+    const deletedAt = new Date().toISOString();
+    setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, deletedAt } : c)));
+    dataService.deleteCandidateToTrash(target, currentUser).catch(() => {});
+    logActivity('candidate', 'Candidate Moved to Trash', `Moved candidate ${target.fullName || id} to Trash`);
   };
 
   const restoreCandidate = (id: string) => {
     if (currentUser.role !== 'admin') return;
-    setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, deletedAt: undefined } : c)));
+    const target = candidates.find((c) => c.id === id);
+    if (!target) return;
+    const restored: Candidate = { ...target, deletedAt: undefined, updatedAt: new Date().toISOString() };
+    setCandidates((prev) => prev.map((c) => (c.id === id ? restored : c)));
+    dataService.createCandidateDoc(restored).catch(() => {});
     logActivity('candidate', 'Candidate Restored', `Restored candidate ID ${id} from Trash`);
   };
 
   const addCandidateNote = (candidateId: string, text: string) => {
+    const old = candidates.find((c) => c.id === candidateId);
+    if (!old) return;
+    const nowIso = new Date().toISOString();
     const note = {
-      id: `not_${Date.now()}`,
+      id: dataService.createAutoId('remarks'),
       authorName: currentUser.name,
       authorRole: currentUser.role,
       text,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
     };
-
+    const nextNotes = [note, ...(old.notes || [])];
     setCandidates((prev) =>
-      prev.map((c) => (c.id === candidateId ? { ...c, notes: [note, ...c.notes], updatedAt: new Date().toISOString() } : c))
+      prev.map((c) => (c.id === candidateId ? { ...c, notes: nextNotes, updatedAt: nowIso } : c))
     );
+    dataService.updateCandidateDoc(candidateId, { notes: nextNotes, updatedAt: nowIso }, 'Note added').catch(() => {});
+    dataService
+      .createRemarkDoc({
+        entityType: 'candidate',
+        entityId: candidateId,
+        text,
+        authorUserId: currentUser.id,
+        authorName: currentUser.name,
+        authorRole: currentUser.role,
+        createdAt: nowIso,
+      })
+      .catch(() => {});
     logActivity('candidate', 'Note Added', `Added note on candidate profile`);
   };
 
@@ -587,31 +738,41 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCandidateRemark = (candidateId: string, text: string, statusChangedTo?: CandidateStatus) => {
+    const target = candidates.find((c) => c.id === candidateId);
+    if (!target) return;
+    const nowIso = new Date().toISOString();
+    const remarkText =
+      text.trim() || (statusChangedTo ? `Status changed to ${statusChangedTo}` : 'General remark');
     const remark: CandidateRemark = {
-      id: `remk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: dataService.createAutoId('remarks'),
       candidateId,
       statusChangedTo,
-      text: text.trim() || (statusChangedTo ? `Status changed to ${statusChangedTo}` : 'General remark'),
+      text: remarkText,
       authorUserId: currentUser.id,
       authorName: currentUser.name,
       authorRole: currentUser.role,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
+    };
+
+    const nextRemarks = [remark, ...(target.remarks || [])];
+    const updates: Partial<Candidate> = {
+      ...(statusChangedTo ? { status: statusChangedTo } : {}),
+      remarks: nextRemarks,
+      updatedAt: nowIso,
     };
 
     setCandidates((prev) =>
-      prev.map((c) => {
-        if (c.id === candidateId) {
-          const existingRemarks = c.remarks || [];
-          return {
-            ...c,
-            ...(statusChangedTo ? { status: statusChangedTo } : {}),
-            remarks: [remark, ...existingRemarks],
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return c;
-      })
+      prev.map((c) => (c.id === candidateId ? { ...c, ...updates } : c))
     );
+    dataService.updateCandidateDoc(candidateId, updates, remarkText).catch(() => {});
+    dataService
+      .createRemarkDoc({
+        ...remark,
+        entityType: 'candidate',
+        entityId: candidateId,
+      })
+      .catch(() => {});
+
     logActivity(
       'candidate',
       statusChangedTo ? 'Status Changed & Remark Logged' : 'Remark Logged',
@@ -621,18 +782,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteCandidateRemark = (candidateId: string, remarkId: string) => {
     if (currentUser.role !== 'admin') return;
+    const target = candidates.find((c) => c.id === candidateId);
+    if (!target || !target.remarks) return;
+    const nowIso = new Date().toISOString();
+    const nextRemarks = target.remarks.filter((r) => r.id !== remarkId);
     setCandidates((prev) =>
-      prev.map((c) => {
-        if (c.id === candidateId && c.remarks) {
-          return {
-            ...c,
-            remarks: c.remarks.filter((r) => r.id !== remarkId),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return c;
-      })
+      prev.map((c) => (c.id === candidateId ? { ...c, remarks: nextRemarks, updatedAt: nowIso } : c))
     );
+    dataService
+      .updateCandidateDoc(candidateId, { remarks: nextRemarks, updatedAt: nowIso }, 'Deleted remark')
+      .catch(() => {});
     logActivity('candidate', 'Remark Deleted', `Deleted remark ID ${remarkId} for candidate ${candidateId}`);
   };
 
@@ -641,32 +800,14 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { candidate, newStatus, isStatusChange, bulkCandidateIds } = activeStatusRemarkModal;
 
     if (bulkCandidateIds && bulkCandidateIds.length > 0 && newStatus) {
-      const idSet = new Set(bulkCandidateIds);
-      const nowIso = new Date().toISOString();
-      setCandidates((prev) =>
-        prev.map((c) => {
-          if (idSet.has(c.id)) {
-            const rem: CandidateRemark = {
-              id: `remk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-              candidateId: c.id,
-              statusChangedTo: newStatus,
-              text: text.trim() || `Bulk status updated to ${newStatus}`,
-              authorUserId: currentUser.id,
-              authorName: currentUser.name,
-              authorRole: currentUser.role,
-              createdAt: nowIso,
-            };
-            return {
-              ...c,
-              status: newStatus,
-              remarks: [rem, ...(c.remarks || [])],
-              updatedAt: nowIso,
-            };
-          }
-          return c;
-        })
+      bulkCandidateIds.forEach((cid) => {
+        addCandidateRemark(cid, text || `Bulk status updated to ${newStatus}`, newStatus);
+      });
+      logActivity(
+        'candidate',
+        'Bulk Status Update & Remarks',
+        `Updated ${bulkCandidateIds.length} candidates to ${newStatus}`
       );
-      logActivity('candidate', 'Bulk Status Update & Remarks', `Updated ${bulkCandidateIds.length} candidates to ${newStatus}`);
     } else if (isStatusChange && newStatus) {
       addCandidateRemark(candidate.id, text, newStatus);
     } else {
@@ -681,34 +822,45 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const bulkAssignRecruiter = (candidateIds: string[], recruiterId: string, recruiterName: string) => {
     const idSet = new Set(candidateIds);
+    const nowIso = new Date().toISOString();
     setCandidates((prev) =>
       prev.map((c) =>
         idSet.has(c.id)
-          ? { ...c, assignedRecruiterId: recruiterId, assignedRecruiterName: recruiterName, updatedAt: new Date().toISOString() }
+          ? {
+              ...c,
+              assignedRecruiterId: recruiterId,
+              assignedRecruiterName: recruiterName,
+              updatedAt: nowIso,
+            }
           : c
       )
     );
-    logActivity('candidate', 'Bulk Reassignment', `Reassigned ${candidateIds.length} candidates to ${recruiterName}`);
+    candidateIds.forEach((id) => {
+      dataService
+        .updateCandidateDoc(
+          id,
+          { assignedRecruiterId: recruiterId, assignedRecruiterName: recruiterName, updatedAt: nowIso },
+          `Reassigned to ${recruiterName}`
+        )
+        .catch(() => {});
+    });
+    logActivity(
+      'candidate',
+      'Bulk Reassignment',
+      `Reassigned ${candidateIds.length} candidates to ${recruiterName}`
+    );
   };
 
   const bulkDeleteCandidates = (candidateIds: string[]) => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can delete records.');
-      return;
-    }
-    const idSet = new Set(candidateIds);
-    setCandidates((prev) => prev.map((c) => (idSet.has(c.id) ? { ...c, deletedAt: new Date().toISOString() } : c)));
-    logActivity('candidate', 'Bulk Trash', `Moved ${candidateIds.length} candidates to Trash`);
+    if (currentUser.role !== 'admin') return;
+    candidateIds.forEach((id) => deleteCandidate(id));
   };
 
   const bulkImportCandidates = (newItems: Partial<Candidate>[]): number => {
     let imported = 0;
-    const toAdd: Candidate[] = [];
-
     newItems.forEach((item) => {
       if (item.fullName && (item.phone || item.email)) {
-        toAdd.push({
-          id: `cand_bulk_${Date.now()}_${imported}`,
+        addCandidate({
           fullName: item.fullName,
           phone: item.phone || '+91 98000 00000',
           email: item.email || `imported_${Date.now()}_${imported}@example.com`,
@@ -723,18 +875,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           assignedRecruiterId: currentUser.id,
           assignedRecruiterName: currentUser.name,
           status: (item.status as any) || 'New',
-          notes: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         });
         imported++;
       }
     });
-
-    if (toAdd.length > 0) {
-      setCandidates((prev) => [...toAdd, ...prev]);
-      logActivity('candidate', 'Bulk CSV Imported', `Imported ${imported} candidates`);
-    }
     return imported;
   };
 
@@ -750,15 +894,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let updated = 0;
     let skipped = 0;
 
-    const newCandidates: Candidate[] = [];
-    const updatesMap = new Map<string, Partial<Candidate>>();
-
     records.forEach((r) => {
       if (r.isUpdate && r.existingId) {
-        updatesMap.set(r.existingId, r.data);
+        updateCandidate(r.existingId, r.data, updateReason);
         updated++;
       } else if (!r.isUpdate && r.data.fullName && (r.data.phone || r.data.email)) {
-        // Recruiter and HR can only import candidates assigned to themselves
         const assignedId =
           currentUser.role === 'recruiter' || currentUser.role === 'hr_executive'
             ? currentUser.id
@@ -768,8 +908,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? currentUser.name
             : r.data.assignedRecruiterName || currentUser.name;
 
-        newCandidates.push({
-          id: `cand_bulk_${Date.now()}_${added}`,
+        addCandidate({
           fullName: r.data.fullName.trim(),
           phone: r.data.phone ? r.data.phone.trim() : '+91 98000 00000',
           email: r.data.email
@@ -795,41 +934,12 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           jobTitle: r.data.jobTitle,
           clientName: r.data.clientName,
           expectedJoiningDate: r.data.expectedJoiningDate,
-          notes: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         });
         added++;
       } else {
         skipped++;
       }
     });
-
-    if (updatesMap.size > 0) {
-      setCandidates((prev) =>
-        prev.map((c) => {
-          if (updatesMap.has(c.id)) {
-            const updates = updatesMap.get(c.id)!;
-            const changes: { field: string; oldValue: any; newValue: any }[] = [];
-            Object.keys(updates).forEach((k) => {
-              const key = k as keyof Candidate;
-              if (JSON.stringify(c[key]) !== JSON.stringify(updates[key])) {
-                changes.push({ field: key, oldValue: c[key], newValue: updates[key] });
-              }
-            });
-            if (changes.length > 0) {
-              addEditHistory(c.id, 'candidate', updateReason, changes);
-            }
-            return { ...c, ...updates, updatedAt: new Date().toISOString() };
-          }
-          return c;
-        })
-      );
-    }
-
-    if (newCandidates.length > 0) {
-      setCandidates((prev) => [...newCandidates, ...prev]);
-    }
 
     logActivity(
       'candidate',
@@ -851,24 +961,25 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     if (!canManageClients) return;
     const nowIso = new Date().toISOString();
-    const clientId = `cli_${Date.now()}`;
+    const clientId = dataService.createAutoId('clients');
     const sec: ClientSection = c.section || getClientSection(c);
     const trimmedRemark = (initialRemark || '').trim();
-    const initialRemarksList: ClientRemark[] =
+    const initialRemarkObj: ClientRemark | null =
       trimmedRemark.length >= 3
-        ? [
-            {
-              id: `crem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-              clientId,
-              section: sec,
-              text: trimmedRemark,
-              authorUserId: currentUser.id,
-              authorName: currentUser.name,
-              authorRole: currentUser.role,
-              createdAt: nowIso,
-            },
-          ]
-        : c.remarks || [];
+        ? {
+            id: dataService.createAutoId('remarks'),
+            clientId,
+            section: sec,
+            text: trimmedRemark,
+            authorUserId: currentUser.id,
+            authorName: currentUser.name,
+            authorRole: currentUser.role,
+            createdAt: nowIso,
+          }
+        : null;
+    const initialRemarksList: ClientRemark[] = initialRemarkObj
+      ? [initialRemarkObj]
+      : c.remarks || [];
 
     const newClient: Client = {
       ...c,
@@ -887,6 +998,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       placedCandidatesCount: 0,
     };
     setClients((prev) => [newClient, ...prev]);
+    dataService.createClientDoc(newClient).catch(() => {});
+    if (initialRemarkObj) {
+      dataService
+        .createRemarkDoc({
+          ...initialRemarkObj,
+          entityType: 'client',
+          entityId: clientId,
+        })
+        .catch(() => {});
+    }
     logActivity(
       'client',
       'Client Onboarded',
@@ -897,7 +1018,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateClient = (id: string, updates: Partial<Client>, reason: string) => {
     if (!canManageClients) return;
     const trimmedReason = (reason || '').trim();
-    if (trimmedReason.length < 10) return;
+    if (trimmedReason.length < 3) return;
 
     const old = clients.find((c) => c.id === id);
     if (!old) return;
@@ -923,26 +1044,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...normalizedUpdates } : c)));
+    dataService.updateClientDoc(id, normalizedUpdates, trimmedReason).catch(() => {});
 
     // Keep linked jobs & candidates company name in sync if company name was edited
     if (normalizedUpdates.name && normalizedUpdates.name !== old.name) {
       const newName = normalizedUpdates.name;
-      setJobs((prev) =>
-        prev.map((j) => (j.clientId === id ? { ...j, clientName: newName } : j))
-      );
-      setCandidates((prev) =>
-        prev.map((cand) =>
-          cand.clientId === id || cand.clientName === old.name
-            ? { ...cand, clientName: newName }
-            : cand
-        )
-      );
-      setPipeline((prev) =>
-        prev.map((p) => (p.clientId === id ? { ...p, clientName: newName } : p))
-      );
-      setInterviews((prev) =>
-        prev.map((i) => (i.clientId === id ? { ...i, clientName: newName } : i))
-      );
+      jobs
+        .filter((j) => j.clientId === id)
+        .forEach((j) => {
+          dataService.updateJobDoc(j.id, { clientName: newName }, `Company renamed to ${newName}`).catch(() => {});
+        });
     }
 
     logActivity('client', 'Client Updated', `Updated client ${old.name}. Reason: ${trimmedReason}`);
@@ -965,7 +1076,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nowIso = new Date().toISOString();
 
     const newRemark: ClientRemark = {
-      id: `crem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: dataService.createAutoId('remarks'),
       clientId: id,
       section: targetSection,
       text: trimmedRemark,
@@ -992,19 +1103,24 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
     }
 
-    setClients((prev) =>
-      prev.map((c) => {
-        if (c.id !== id) return c;
-        return {
-          ...c,
-          ...dateUpdates,
-          section: targetSection,
-          status: sectionToClientStatus(targetSection),
-          remarks: [newRemark, ...(c.remarks || [])],
-          updatedAt: nowIso,
-        };
+    const nextRemarks = [newRemark, ...(old.remarks || [])];
+    const updates: Partial<Client> = {
+      ...dateUpdates,
+      section: targetSection,
+      status: sectionToClientStatus(targetSection),
+      remarks: nextRemarks,
+      updatedAt: nowIso,
+    };
+
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    dataService.updateClientDoc(id, updates, `Moved section: ${trimmedRemark}`).catch(() => {});
+    dataService
+      .createRemarkDoc({
+        ...newRemark,
+        entityType: 'client',
+        entityId: id,
       })
-    );
+      .catch(() => {});
 
     logActivity(
       'client',
@@ -1024,7 +1140,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const sec = getClientSection(target);
     const nowIso = new Date().toISOString();
     const newRemark: ClientRemark = {
-      id: `crem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: dataService.createAutoId('remarks'),
       clientId: id,
       section: sec,
       text: trimmed,
@@ -1034,17 +1150,20 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: nowIso,
     };
 
+    const nextRemarks = [newRemark, ...(target.remarks || [])];
     setClients((prev) =>
-      prev.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              remarks: [newRemark, ...(c.remarks || [])],
-              updatedAt: nowIso,
-            }
-          : c
-      )
+      prev.map((c) => (c.id === id ? { ...c, remarks: nextRemarks, updatedAt: nowIso } : c))
     );
+    dataService
+      .updateClientDoc(id, { remarks: nextRemarks, updatedAt: nowIso }, `Added remark: ${trimmed}`)
+      .catch(() => {});
+    dataService
+      .createRemarkDoc({
+        ...newRemark,
+        entityType: 'client',
+        entityId: id,
+      })
+      .catch(() => {});
     logActivity('client', 'Client Remark Added', `Added remark on ${target.name}`);
   };
 
@@ -1056,56 +1175,38 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = clients.find((c) => c.id === id);
     if (!target) return;
 
-    const sec = getClientSection(target);
     const nowIso = new Date().toISOString();
-    const deleteRemark: ClientRemark = {
-      id: `crem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      clientId: id,
-      section: sec,
-      text: `[Moved to Trash] ${trimmedReason}`,
-      authorUserId: currentUser.id,
-      authorName: currentUser.name,
-      authorRole: currentUser.role,
-      createdAt: nowIso,
-    };
-
     setClients((prev) =>
       prev.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              deletedAt: nowIso,
-              deleteReason: trimmedReason,
-              remarks: [deleteRemark, ...(c.remarks || [])],
-              updatedAt: nowIso,
-            }
-          : c
+        c.id === id ? { ...c, deletedAt: nowIso, deleteReason: trimmedReason, updatedAt: nowIso } : c
       )
     );
+    dataService.deleteClientToTrash(target, currentUser).catch(() => {});
     logActivity(
       'client',
       'Client Moved to Trash',
-      `Moved client ${target.name} to Trash (30 days). Reason: ${trimmedReason}`
+      `Moved client ${target.name} to Trash. Reason: ${trimmedReason}`
     );
   };
 
   const restoreClient = (id: string) => {
     if (currentUser.role !== 'admin') return;
     const target = clients.find((c) => c.id === id);
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === id
-          ? { ...c, deletedAt: undefined, deleteReason: undefined, updatedAt: new Date().toISOString() }
-          : c
-      )
-    );
-    logActivity('client', 'Client Restored', `Restored client ${target?.name || id} from Trash`);
+    if (!target) return;
+    const restored: Client = {
+      ...target,
+      deletedAt: undefined,
+      deleteReason: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    setClients((prev) => prev.map((c) => (c.id === id ? restored : c)));
+    dataService.createClientDoc(restored).catch(() => {});
+    logActivity('client', 'Client Restored', `Restored client ${target.name || id} from Trash`);
   };
 
   const bulkImportClients = (newItems: Array<Partial<Client> & { latestRemark?: string }>): number => {
     if (!canManageClients) return 0;
     let imported = 0;
-    const toAdd: Client[] = [];
     const seenNames = new Set(clients.map((c) => c.name.trim().toLowerCase()));
     const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -1113,7 +1214,6 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const cleanName = (item.name || '').trim();
       if (cleanName && !seenNames.has(cleanName.toLowerCase())) {
         seenNames.add(cleanName.toLowerCase());
-        const clientId = `cli_bulk_${Date.now()}_${imported}`;
         const rawSec = String(item.section || item.status || 'Green').trim().toLowerCase();
         let sec: ClientSection = 'Green';
         if (rawSec.includes('blue') || rawSec.includes('discussion') || rawSec.includes('prospect')) {
@@ -1122,64 +1222,39 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           sec = 'Red';
         }
 
-        const nowIso = new Date().toISOString();
-        const remarkStr = (item.latestRemark || '').trim();
-        const remarksList: ClientRemark[] =
-          remarkStr.length >= 3
-            ? [
-                {
-                  id: `crem_bulk_${Date.now()}_${imported}`,
-                  clientId,
-                  section: sec,
-                  text: remarkStr.slice(0, 500),
-                  authorUserId: currentUser.id,
-                  authorName: currentUser.name,
-                  authorRole: currentUser.role,
-                  createdAt: nowIso,
-                },
-              ]
-            : [];
-
-        toAdd.push({
-          id: clientId,
-          name: cleanName,
-          industry: (item.industry || 'Information Technology & Services').trim(),
-          address: (item.address || 'Corporate Office').trim(),
-          city: (item.city || 'Noida').trim(),
-          website: (item.website || 'https://example.com').trim(),
-          contactPersons: item.contactPersons || [
-            {
-              id: `cp_${Date.now()}_${imported}`,
-              name: 'HR Head',
-              designation: 'HR Manager',
-              phone: '+91 98110 00000',
-              email: 'hr@example.com',
-            },
-          ],
-          agreementDetails: (item.agreementDetails || 'Standard SLA').trim(),
-          commissionPercent: Number(item.commissionPercent) || 8.33,
-          paymentTerms: (item.paymentTerms || '30 days net').trim(),
-          section: sec,
-          status: sectionToClientStatus(sec),
-          enquiryDate: item.enquiryDate || todayStr,
-          lastContactedDate: item.lastContactedDate || (sec !== 'Red' ? todayStr : undefined),
-          nextFollowUpDate: item.nextFollowUpDate || undefined,
-          agreementSignedDate: item.agreementSignedDate || (sec === 'Green' ? todayStr : undefined),
-          remarks: remarksList,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          assignedAccountManagerId: currentUser.id,
-          assignedAccountManagerName: currentUser.name,
-          activeJobsCount: 0,
-          placedCandidatesCount: 0,
-        });
+        addClient(
+          {
+            name: cleanName,
+            industry: (item.industry || 'Information Technology & Services').trim(),
+            address: (item.address || 'Corporate Office').trim(),
+            city: (item.city || 'Noida').trim(),
+            website: (item.website || 'https://example.com').trim(),
+            contactPersons: item.contactPersons || [
+              {
+                id: `cp_${Date.now()}_${imported}`,
+                name: 'HR Head',
+                designation: 'HR Manager',
+                phone: '+91 98110 00000',
+                email: 'hr@example.com',
+              },
+            ],
+            agreementDetails: (item.agreementDetails || 'Standard SLA').trim(),
+            commissionPercent: Number(item.commissionPercent) || 8.33,
+            paymentTerms: (item.paymentTerms || '30 days net').trim(),
+            section: sec,
+            status: sectionToClientStatus(sec),
+            enquiryDate: item.enquiryDate || todayStr,
+            lastContactedDate: item.lastContactedDate || (sec !== 'Red' ? todayStr : undefined),
+            nextFollowUpDate: item.nextFollowUpDate || undefined,
+            agreementSignedDate: item.agreementSignedDate || (sec === 'Green' ? todayStr : undefined),
+            assignedAccountManagerId: currentUser.id,
+            assignedAccountManagerName: currentUser.name,
+          },
+          item.latestRemark
+        );
         imported++;
       }
     });
-    if (toAdd.length > 0) {
-      setClients((prev) => [...toAdd, ...prev]);
-      logActivity('client', 'Bulk Clients Imported', `Imported ${imported} clients`);
-    }
     return imported;
   };
 
@@ -1187,14 +1262,20 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addJob = (j: Omit<JobOpening, 'id' | 'createdAt' | 'applicationsCount'>) => {
     const newJob: JobOpening = {
       ...j,
-      id: `job_${Date.now()}`,
+      id: dataService.createAutoId('jobs'),
       createdAt: new Date().toISOString(),
       applicationsCount: 0,
     };
     setJobs((prev) => [newJob, ...prev]);
-    setClients((prev) =>
-      prev.map((c) => (c.id === j.clientId ? { ...c, activeJobsCount: (c.activeJobsCount || 0) + 1 } : c))
-    );
+    dataService.createJobDoc(newJob).catch(() => {});
+
+    const parentClient = clients.find((c) => c.id === j.clientId);
+    if (parentClient) {
+      const nextCount = (parentClient.activeJobsCount || 0) + 1;
+      dataService
+        .updateClientDoc(parentClient.id, { activeJobsCount: nextCount }, `Added job: ${j.title}`)
+        .catch(() => {});
+    }
     logActivity('job', 'Job Created', `Created requisition: ${j.title} for ${j.clientName}`);
   };
 
@@ -1202,6 +1283,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const old = jobs.find((j) => j.id === id);
     if (!old) return;
 
+    const cleanReason = reason && reason.trim().length > 0 ? reason.trim() : 'Job requisition updated';
     const changes: { field: string; oldValue: any; newValue: any }[] = [];
     Object.keys(updates).forEach((key) => {
       const k = key as keyof JobOpening;
@@ -1210,41 +1292,43 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
     if (changes.length > 0) {
-      addEditHistory(id, 'job', reason || 'Job requisition updated', changes);
+      addEditHistory(id, 'job', cleanReason, changes);
     }
 
     setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...updates } : j)));
-    logActivity('job', 'Job Updated', `Updated requisition ${old.title}. Reason: ${reason}`);
+    dataService.updateJobDoc(id, updates, cleanReason).catch(() => {});
+    logActivity('job', 'Job Updated', `Updated requisition ${old.title}. Reason: ${cleanReason}`);
   };
 
   const deleteJob = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can delete records.');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     const target = jobs.find((j) => j.id === id);
+    if (!target) return;
     setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, deletedAt: new Date().toISOString() } : j)));
-    logActivity('job', 'Job Moved to Trash', `Moved job ${target?.title || id} to Trash`);
+    dataService.deleteJobToTrash(target, currentUser).catch(() => {});
+    logActivity('job', 'Job Moved to Trash', `Moved job ${target.title || id} to Trash`);
   };
 
   const restoreJob = (id: string) => {
     if (currentUser.role !== 'admin') return;
-    setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, deletedAt: undefined } : j)));
+    const target = jobs.find((j) => j.id === id);
+    if (!target) return;
+    const restored: JobOpening = { ...target, deletedAt: undefined };
+    setJobs((prev) => prev.map((j) => (j.id === id ? restored : j)));
+    dataService.createJobDoc(restored).catch(() => {});
     logActivity('job', 'Job Restored', `Restored job ID ${id}`);
   };
 
   const bulkImportJobs = (newItems: Partial<JobOpening>[]): number => {
     let imported = 0;
-    const toAdd: JobOpening[] = [];
     newItems.forEach((item) => {
       if (item.title && (item.clientName || item.clientId)) {
         const matchedClient = clients.find(
           (c) => c.name.toLowerCase() === (item.clientName || '').toLowerCase()
         );
-        toAdd.push({
-          id: `job_bulk_${Date.now()}_${imported}`,
+        addJob({
           title: item.title.trim(),
-          clientId: matchedClient?.id || item.clientId || 'cli_tcs',
+          clientId: matchedClient?.id || item.clientId || '',
           clientName: item.clientName ? item.clientName.trim() : matchedClient?.name || 'Corporate Client',
           location: item.location ? item.location.trim() : 'Noida',
           positions: Number(item.positions) || 1,
@@ -1268,17 +1352,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status: (item.status as any) || 'Open',
           assignedRecruiterIds: [currentUser.id],
           assignedRecruiterNames: [currentUser.name],
-          createdAt: new Date().toISOString(),
-          applicationsCount: 0,
         });
         imported++;
       }
     });
-
-    if (toAdd.length > 0) {
-      setJobs((prev) => [...toAdd, ...prev]);
-      logActivity('job', 'Bulk Jobs Imported', `Imported ${imported} job requisitions`);
-    }
     return imported;
   };
 
@@ -1313,9 +1390,15 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Pipeline Actions
   const movePipelineStage = (id: string, newStage: PipelineStage) => {
     const item = pipeline.find((p) => p.id === id);
+    const nowIso = new Date().toISOString();
     setPipeline((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, stage: newStage, updatedAt: new Date().toISOString(), lastMovedBy: currentUser.name } : p))
+      prev.map((p) =>
+        p.id === id ? { ...p, stage: newStage, updatedAt: nowIso, lastMovedBy: currentUser.name } : p
+      )
     );
+    dataService
+      .updatePipelineDoc(id, { stage: newStage, updatedAt: nowIso, lastMovedBy: currentUser.name })
+      .catch(() => {});
     logActivity('candidate', 'Pipeline Stage Moved', `Moved candidate stage to ${newStage}`);
 
     if (item) {
@@ -1347,7 +1430,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (exists) return;
 
     const newItem: PipelineItem = {
-      id: `pipe_${Date.now()}`,
+      id: dataService.createAutoId('pipeline'),
       candidateId: cand.id,
       candidateName: cand.fullName,
       candidatePhone: cand.phone,
@@ -1360,12 +1443,13 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clientId: job.clientId,
       clientName: job.clientName,
       stage,
-      assignedRecruiterId: cand.assignedRecruiterId,
+      assignedRecruiterId: cand.assignedRecruiterId || currentUser.id,
       updatedAt: new Date().toISOString(),
       lastMovedBy: currentUser.name,
     };
 
     setPipeline((prev) => [newItem, ...prev]);
+    dataService.createPipelineDoc(newItem).catch(() => {});
     logActivity('candidate', 'Added to Pipeline', `Enrolled ${cand.fullName} into hiring pipeline for ${job.title}`);
   };
 
@@ -1373,40 +1457,50 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addInterview = (i: Omit<Interview, 'id'>) => {
     const newInt: Interview = {
       ...i,
-      id: `int_${Date.now()}`,
+      id: dataService.createAutoId('interviews'),
+      assignedToRecruiterId: i.assignedToRecruiterId || currentUser.id,
     };
     setInterviews((prev) => [newInt, ...prev]);
+    dataService.createInterviewDoc(newInt).catch(() => {});
     logActivity('interview', 'Interview Scheduled', `Scheduled ${i.roundName} for ${i.candidateName} with ${i.clientName}`);
   };
 
   const updateInterview = (id: string, updates: Partial<Interview>) => {
     setInterviews((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
+    dataService.updateInterviewDoc(id, updates).catch(() => {});
     logActivity('interview', 'Interview Updated', `Updated interview schedule ID ${id}`);
   };
 
   const deleteInterview = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can delete interviews.');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
+    const target = interviews.find((i) => i.id === id);
+    if (!target) return;
     setInterviews((prev) => prev.filter((i) => i.id !== id));
+    dataService.deleteInterviewToTrash(target, currentUser).catch(() => {});
     logActivity('interview', 'Interview Cancelled', `Deleted interview ID ${id}`);
   };
 
   // Tasks & Reminders
-  const addReminder = (r: Omit<ReminderTask, 'id' | 'createdAt' | 'assignedByUserId' | 'assignedByUserName'>) => {
+  const addReminder = (
+    r: Omit<ReminderTask, 'id' | 'createdAt' | 'assignedByUserId' | 'assignedByUserName'>
+  ) => {
     if (!canCreateTasks) {
-      alert('Access Restricted: Only Admin and HR Executive can create or assign tasks.');
-      throw new Error('Unauthorized');
+      throw new Error('Access Restricted: Only Admin and HR Executive can create or assign tasks.');
     }
-    const newRem: ReminderTask = {
+    const assignee = users.find((u) => u.id === r.assignedToUserId);
+    const assigneeRole = assignee?.role || 'recruiter';
+
+    const newRem: ReminderTask & { createdByUserId?: string; assignedToUserRole?: string } = {
       ...r,
-      id: `rem_${Date.now()}`,
+      id: dataService.createAutoId('tasks'),
       assignedByUserId: currentUser.id,
       assignedByUserName: currentUser.name,
+      createdByUserId: currentUser.id,
+      assignedToUserRole: assigneeRole,
       createdAt: new Date().toISOString(),
     };
     setReminders((prev) => [newRem, ...prev]);
+    dataService.createTaskDoc(newRem).catch(() => {});
     logActivity('system', 'Task Created', `Assigned task "${r.title}" to ${r.assignedToUserName}`);
     return newRem;
   };
@@ -1415,27 +1509,29 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const rem = reminders.find((r) => r.id === id);
     if (!rem) return;
 
-    const isAssigner = rem.assignedByUserId === currentUser.id;
-    if (currentUser.role !== 'admin' && !(currentUser.role === 'hr_executive' && isAssigner)) {
-      alert('Access Restricted: Only Admin or the HR Executive who created this task can edit it.');
+    const isAssigner =
+      rem.assignedByUserId === currentUser.id || (rem as any).createdByUserId === currentUser.id;
+    const isAssignee = rem.assignedToUserId === currentUser.id;
+    if (
+      currentUser.role !== 'admin' &&
+      !(currentUser.role === 'hr_executive' && isAssigner) &&
+      !isAssignee
+    ) {
       return;
     }
 
     setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+    dataService.updateTaskDoc(id, updates).catch(() => {});
     logActivity('system', 'Task Updated', `Updated task: ${rem.title}`);
   };
 
   const deleteReminder = (id: string) => {
+    if (currentUser.role !== 'admin') return;
     const rem = reminders.find((r) => r.id === id);
     if (!rem) return;
 
-    const isAssigner = rem.assignedByUserId === currentUser.id;
-    if (currentUser.role !== 'admin' && !(currentUser.role === 'hr_executive' && isAssigner)) {
-      alert('Access Restricted: Only Admin or the HR Executive who created this task can delete it.');
-      return;
-    }
-
     setReminders((prev) => prev.filter((r) => r.id !== id));
+    dataService.deleteTaskToTrash(rem, currentUser).catch(() => {});
     logActivity('system', 'Task Deleted', `Deleted task: ${rem.title}`);
   };
 
@@ -1444,10 +1540,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!rem) return;
 
     const isAssignee = rem.assignedToUserId === currentUser.id;
-    if (!isAssignee && currentUser.role !== 'admin') {
-      alert('Access Restricted: Only the task assignee or Admin can mark this task as done.');
-      return;
-    }
+    if (!isAssignee && currentUser.role !== 'admin') return;
 
     const nextStatus = rem.status === 'Pending' ? 'Completed' : 'Pending';
     const completedAt = nextStatus === 'Completed' ? new Date().toISOString() : undefined;
@@ -1455,6 +1548,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReminders((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: nextStatus, completedAt } : r))
     );
+    dataService.updateTaskDoc(id, { status: nextStatus, completedAt }).catch(() => {});
     logActivity('system', 'Task Completed', `Marked task "${rem.title}" as completed`);
   };
 
@@ -1462,26 +1556,15 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const rem = reminders.find((r) => r.id === id);
     if (!rem) return;
 
-    const isAssigner = rem.assignedByUserId === currentUser.id;
-    if (currentUser.role !== 'admin' && !(currentUser.role === 'hr_executive' && isAssigner)) {
-      alert('Access Restricted: Only Admin or the HR Executive who created this task can postpone it.');
-      return;
-    }
+    const d = new Date(rem.dueDate);
+    d.setDate(d.getDate() + days);
+    const dueDate = d.toISOString().split('T')[0];
+    const snoozedUntil = new Date().toISOString();
 
     setReminders((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          const d = new Date(r.dueDate);
-          d.setDate(d.getDate() + days);
-          return {
-            ...r,
-            dueDate: d.toISOString().split('T')[0],
-            snoozedUntil: new Date().toISOString(),
-          };
-        }
-        return r;
-      })
+      prev.map((r) => (r.id === id ? { ...r, dueDate, snoozedUntil } : r))
     );
+    dataService.updateTaskDoc(id, { dueDate, snoozedUntil }).catch(() => {});
   };
 
   // Notifications
@@ -1489,7 +1572,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const list: CRMNotification[] = [];
     const todayStr = new Date().toISOString().split('T')[0];
 
-    interviews.forEach((item) => {
+    visibleInterviews.forEach((item) => {
       if (item.status === 'Scheduled') {
         const itemDate = item.dateTime.split('T')[0];
         if (itemDate === todayStr) {
@@ -1523,7 +1606,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return list;
-  }, [interviews, visibleReminders, readNotifIds]);
+  }, [visibleInterviews, visibleReminders, readNotifIds]);
 
   const unreadNotificationCount = useMemo(() => {
     return notifications.filter((n) => !n.isRead).length;
@@ -1537,46 +1620,42 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReadNotifIds(notifications.map((n) => n.id));
   };
 
-  // Settings & User Management
+  // Settings & User Management (Admin only)
   const updateCompanySettings = (settings: Partial<CompanySettings>) => {
-    setCompanySettings((prev) => ({ ...prev, ...settings }));
+    setCompanySettings((prev) => {
+      const next = { ...prev, ...settings };
+      dataService.saveCompanySettingsDoc(next).catch(() => {});
+      return next;
+    });
     logActivity('system', 'Settings Updated', 'Updated company profile configuration');
   };
 
-  const addUser = (u: Omit<User, 'id'>) => {
+  const addUser = async (u: Omit<User, 'id'>) => {
     if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can add users.');
-      return;
+      throw new Error('Access Restricted: Only Admin can add users.');
     }
-    const newUser: User = {
-      ...u,
-      id: `usr_${Date.now()}`,
-      active: true,
-      password: u.password || 'bjbright2026',
-    };
-    setUsers((prev) => [...prev, newUser]);
-    logActivity('system', 'User Created', `Added team member ${u.name} as ${u.role.toUpperCase()}`);
+    const tempPassword = u.password && u.password.length >= 6 ? u.password : 'bjbright2026';
+    const createdUser = await dataService.adminCreateUserAccount(u, tempPassword);
+    logActivity(
+      'system',
+      'User Created',
+      `Created Firebase Auth & CRM account for ${createdUser.name} (${createdUser.role.toUpperCase()})`
+    );
   };
 
   const updateUser = (id: string, updates: Partial<User>) => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can update user roles/credentials.');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+    dataService.updateUserDoc(id, updates).catch(() => {});
     logActivity('system', 'User Updated', `Updated account for user ID ${id}`);
   };
 
   const toggleUserStatus = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can disable or enable users.');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     const target = users.find((u) => u.id === id);
     if (!target) return;
 
     if (target.active) {
-      // Disabling: check if user owns candidates, jobs, or tasks
       const ownedCandidates = candidates.filter((c) => c.assignedRecruiterId === id && !c.deletedAt);
       const ownedJobs = jobs.filter((j) => j.assignedRecruiterIds?.includes(id) && !j.deletedAt);
       const ownedTasks = reminders.filter((r) => r.assignedToUserId === id && r.status === 'Pending');
@@ -1587,88 +1666,84 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, active: !u.active } : u)));
-    logActivity('system', target.active ? 'User Disabled' : 'User Enabled', `Toggled access for ${target.name}`);
+    const nextActive = !target.active;
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, active: nextActive } : u)));
+    dataService.setUserActiveStatus(id, nextActive).catch(() => {});
+    logActivity(
+      'system',
+      nextActive ? 'User Re-enabled' : 'User Access Removed',
+      `${nextActive ? 'Re-enabled' : 'Disabled'} access for ${target.name}`
+    );
   };
 
+  // Requirement 4: Do not try to delete Firebase Auth accounts from browser; use disable (active=false) instead
   const deleteUser = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      alert('Access Restricted: Only Admin can delete users.');
-      return;
-    }
-    if (users.length <= 1) {
-      alert('Cannot delete the last remaining user.');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     const target = users.find((u) => u.id === id);
     if (!target) return;
-
-    const ownedCandidates = candidates.filter((c) => c.assignedRecruiterId === id && !c.deletedAt);
-    const ownedJobs = jobs.filter((j) => j.assignedRecruiterIds?.includes(id) && !j.deletedAt);
-    const ownedTasks = reminders.filter((r) => r.assignedToUserId === id && r.status === 'Pending');
-
-    if (ownedCandidates.length > 0 || ownedJobs.length > 0 || ownedTasks.length > 0) {
-      setReassignmentTargetUser({ user: target, type: 'delete' });
-      return;
+    if (target.active) {
+      toggleUserStatus(id);
     }
-
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    logActivity('system', 'User Deleted', `Removed team member ${target.name}`);
   };
 
-  const reassignAndResolveUser = (oldUserId: string, newUserId: string, actionType: 'disable' | 'delete') => {
+  const reassignAndResolveUser = (
+    oldUserId: string,
+    newUserId: string,
+    _actionType: 'disable' | 'delete'
+  ) => {
     const newUser = users.find((u) => u.id === newUserId);
     if (!newUser) return;
 
-    // Reassign candidates
-    setCandidates((prev) =>
-      prev.map((c) => (c.assignedRecruiterId === oldUserId ? { ...c, assignedRecruiterId: newUser.id, assignedRecruiterName: newUser.name } : c))
-    );
-    // Reassign jobs
-    setJobs((prev) =>
-      prev.map((j) => ({
-        ...j,
-        assignedRecruiterIds: j.assignedRecruiterIds?.map((id) => (id === oldUserId ? newUser.id : id)),
-        assignedRecruiterNames: j.assignedRecruiterNames?.map((name) => (name === users.find(u => u.id === oldUserId)?.name ? newUser.name : name)),
-      }))
-    );
-    // Reassign tasks
-    setReminders((prev) =>
-      prev.map((r) => (r.assignedToUserId === oldUserId ? { ...r, assignedToUserId: newUser.id, assignedToUserName: newUser.name } : r))
-    );
+    candidates
+      .filter((c) => c.assignedRecruiterId === oldUserId && !c.deletedAt)
+      .forEach((c) => {
+        dataService
+          .updateCandidateDoc(
+            c.id,
+            { assignedRecruiterId: newUser.id, assignedRecruiterName: newUser.name },
+            `Reassigned from disabled user to ${newUser.name}`
+          )
+          .catch(() => {});
+      });
 
-    if (actionType === 'disable') {
-      setUsers((prev) => prev.map((u) => (u.id === oldUserId ? { ...u, active: false } : u)));
-      logActivity('system', 'User Disabled & Reassigned', `Disabled user and reassigned records to ${newUser.name}`);
-    } else {
-      setUsers((prev) => prev.filter((u) => u.id !== oldUserId));
-      logActivity('system', 'User Deleted & Reassigned', `Deleted user and reassigned records to ${newUser.name}`);
-    }
+    jobs
+      .filter((j) => j.assignedRecruiterIds?.includes(oldUserId) && !j.deletedAt)
+      .forEach((j) => {
+        const nextIds = j.assignedRecruiterIds?.map((id) => (id === oldUserId ? newUser.id : id));
+        const oldName = users.find((u) => u.id === oldUserId)?.name;
+        const nextNames = j.assignedRecruiterNames?.map((n) => (n === oldName ? newUser.name : n));
+        dataService
+          .updateJobDoc(
+            j.id,
+            { assignedRecruiterIds: nextIds, assignedRecruiterNames: nextNames },
+            `Reassigned from disabled user to ${newUser.name}`
+          )
+          .catch(() => {});
+      });
 
+    reminders
+      .filter((r) => r.assignedToUserId === oldUserId && r.status === 'Pending')
+      .forEach((r) => {
+        dataService
+          .updateTaskDoc(r.id, { assignedToUserId: newUser.id, assignedToUserName: newUser.name })
+          .catch(() => {});
+      });
+
+    dataService.setUserActiveStatus(oldUserId, false).catch(() => {});
+    logActivity(
+      'system',
+      'User Access Removed & Reassigned',
+      `Set active=false and reassigned records to ${newUser.name}`
+    );
     setReassignmentTargetUser(null);
   };
 
-  // Demo Mode Data Controls (via single dataService)
-  const saveFirebaseSettings = (_cfg: FirebaseConfigOptions) => {};
+  const saveFirebaseSettings = (_cfg: FirebaseConfig) => {};
   const removeFirebaseSettings = () => {};
 
   const resetAllData = () => {
     if (currentUser.role !== 'admin') return;
-    const restored = dataService.resetToDemoSeedData();
-    setUsers(restored.users);
-    setCompanySettings(restored.companySettings);
-    setClients(restored.clients);
-    setJobs(restored.jobs);
-    setCandidates(restored.candidates);
-    setPipeline(restored.pipeline);
-    setInterviews(restored.interviews);
-    setReminders(restored.reminders);
-    setActivities(restored.activities);
-    setEditHistories([]);
-    setReadNotifIds([]);
-    setExportLogs([]);
-    setImportLogs([]);
-    logActivity('system', 'Demo Data Reset', 'Restored sample seed dataset');
+    loadStarterData().catch(() => {});
   };
 
   const downloadDemoData = () => {
@@ -1679,17 +1754,26 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const link = document.createElement('a');
     const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     link.href = url;
-    link.download = `bj-bright-crm-demo-data-${dateStr}.json`;
+    link.download = `bj-bright-crm-backup-${dateStr}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    logActivity('system', 'Demo Data Downloaded', 'Downloaded JSON snapshot of demo data');
+    logActivity('system', 'CRM Data Backup Downloaded', 'Downloaded JSON snapshot of Firestore data');
   };
 
   return (
     <CRMContext.Provider
       value={{
+        authLoading,
+        isAuthenticated,
+        accessDeniedMessage,
+        clearAccessDeniedMessage,
+        syncStatus,
+        loginWithFirebase,
+        logoutFromFirebase,
+        sendForgotPasswordEmail,
+        loadStarterData,
         currentUser,
         switchUser,
         changeMyPassword,
@@ -1783,8 +1867,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reassignmentTargetUser,
         setReassignmentTargetUser,
         reassignAndResolveUser,
-        isFirebaseConfigured,
-        firebaseConfig,
+        isFirebaseConfigured: true,
+        firebaseConfig: FIREBASE_CONFIG,
         saveFirebaseSettings,
         removeFirebaseSettings,
         resetAllData,
