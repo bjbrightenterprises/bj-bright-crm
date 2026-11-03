@@ -97,101 +97,102 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const displayError = accessDeniedMessage || error;
 
   return (
-    <div className="flex-1 bg-slate-950 flex flex-col justify-center items-center p-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/40 via-slate-950 to-slate-950 pointer-events-none" />
-
-      <div className="relative z-10 w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-7 space-y-5">
-        <div className="text-center space-y-2">
+    <div className="flex-1 min-h-dvh bg-slate-50 text-slate-900 flex flex-col justify-center items-center p-4 pt-safe pb-safe relative overflow-x-hidden">
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+        <div className="bg-[#0B1F4B] text-white p-6 text-center space-y-2 border-b-4 border-[#F5A623]">
           <img
             src="/assets/aistudio/BJ-Bright-logo-circle_cb142036.png"
             alt="BJ Bright Enterprises Logo"
-            className="w-24 h-24 rounded-full object-contain mx-auto mb-2 shadow-xl ring-2 ring-[#F5A623]/40 bg-[#0B1F4B]"
+            className="w-20 h-20 rounded-full object-contain mx-auto mb-1 shadow-md ring-2 ring-[#F5A623] bg-[#0B1F4B]"
           />
-          <h1 className="text-xl font-extrabold text-white">{companySettings.companyName}</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-lg sm:text-xl font-extrabold text-white">{companySettings.companyName}</h1>
+          <p className="text-xs text-slate-200 font-medium">
             {companySettings.city} • Manpower & Recruitment CRM Portal
           </p>
         </div>
 
-        {displayError && (
-          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2 font-medium">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{displayError}</span>
-          </div>
-        )}
-
-        {resetSuccessMsg && (
-          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2 font-medium">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{resetSuccessMsg}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">Email Address</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
-              <input
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your registered email"
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#F5A623]"
-              />
+        <div className="p-6 space-y-5 bg-white text-slate-900">
+          {displayError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2 font-bold">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-700" />
+              <span>{displayError}</span>
             </div>
-          </div>
+          )}
 
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-slate-300">Password</label>
-              <button
-                type="button"
-                disabled={isSendingReset}
-                onClick={handleForgotPassword}
-                className="text-[11px] font-bold text-[#F5A623] hover:text-amber-400 flex items-center gap-1 cursor-pointer disabled:opacity-50"
-              >
-                <KeyRound className="w-3 h-3" />
-                <span>{isSendingReset ? 'Sending reset link...' : 'Forgot password?'}</span>
-              </button>
+          {resetSuccessMsg && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center gap-2 font-bold">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
+              <span>{resetSuccessMsg}</span>
             </div>
-            <div className="relative">
-              <Lock className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                className="w-full pl-9 pr-10 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#F5A623]"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 cursor-pointer"
-                title={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1.5">Email Address</label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500 pointer-events-none" />
+                <input
+                  type="email"
+                  inputMode="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your registered email"
+                  className="w-full min-h-[44px] pl-10 pr-3 py-2.5 rounded-xl bg-white border border-slate-300 text-base sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+                />
+              </div>
             </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-800">Password</label>
+                <button
+                  type="button"
+                  disabled={isSendingReset}
+                  onClick={handleForgotPassword}
+                  className="min-h-[36px] px-2 text-xs font-bold text-[#0B1F4B] hover:text-blue-800 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-[#F5A623]" />
+                  <span>{isSendingReset ? 'Sending reset link...' : 'Forgot password?'}</span>
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500 pointer-events-none" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full min-h-[44px] pl-10 pr-11 py-2.5 rounded-xl bg-white border border-slate-300 text-base sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 cursor-pointer rounded-lg"
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full min-h-[44px] py-3 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] disabled:opacity-60 text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>{isSubmitting ? 'Signing in...' : 'Sign In to CRM Portal'}</span>
+              <ArrowRight className="w-4 h-4 text-[#F5A623]" />
+            </button>
+          </form>
+
+          <div className="pt-3 border-t border-slate-200 flex items-center justify-center gap-2 text-xs text-slate-600 font-medium">
+            <ShieldCheck className="w-4 h-4 text-[#0B1F4B] shrink-0" />
+            <span>Firebase Auth • Role-Based Cloud Access Control</span>
           </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full py-2.5 rounded-xl bg-[#F5A623] hover:bg-amber-500 disabled:opacity-60 text-slate-950 font-extrabold text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <span>{isSubmitting ? 'Signing in...' : 'Sign In to CRM Portal'}</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </form>
-
-        <div className="pt-3 border-t border-slate-800/80 flex items-center justify-center gap-2 text-[11px] text-slate-400">
-          <ShieldCheck className="w-4 h-4 text-[#F5A623] shrink-0" />
-          <span>Firebase Auth • Role-Based Cloud Access Control</span>
         </div>
       </div>
     </div>

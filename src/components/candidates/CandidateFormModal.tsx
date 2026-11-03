@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { Candidate, CandidateStatus } from '../../types/crm';
 import { useCRM } from '../../context/CRMContext';
-import { AlertTriangle, Plus, X, Link as LinkIcon, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, X, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 
 interface CandidateFormModalProps {
   isOpen: boolean;
@@ -34,7 +34,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
   const [jobId, setJobId] = useState('');
   const [source, setSource] = useState<Candidate['source']>('Naukri');
 
-  // More Details (Collapsible)
+  // More Details (Collapsible — collapsed by default on Quick Add)
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const [currentCompany, setCurrentCompany] = useState('');
   const [currentSalaryLPA, setCurrentSalaryLPA] = useState<number>(6);
@@ -70,6 +70,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       setStatus(candidateToEdit.status);
       setJobId(candidateToEdit.jobId || '');
       setEditReason('');
+      setShowMoreDetails(false);
     } else {
       setFullName('');
       setPhone('+91 ');
@@ -85,6 +86,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       setStatus('New');
       setJobId('');
       setEditReason('');
+      setShowMoreDetails(false);
     }
 
     setErrors({});
@@ -158,7 +160,10 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
   const handleSave = (addAnother = false) => {
     if (!validateForm()) return;
     if (duplicateMatch && !confirmDuplicate) {
-      alert('Duplicate candidate detected! Please confirm by ticking the duplicate acknowledgement checkbox.');
+      setErrors((prev) => ({
+        ...prev,
+        duplicate: 'Please confirm by ticking the duplicate acknowledgement checkbox.',
+      }));
       return;
     }
 
@@ -227,7 +232,6 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
           }, 800);
         }
       }
-
     }
   };
 
@@ -237,115 +241,153 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       onClose={onClose}
       title={candidateToEdit ? 'Edit Candidate Profile' : 'Quick Add Candidate'}
       maxWidth="2xl"
+      footer={
+        <div className="flex items-center justify-end gap-2.5 flex-wrap w-full">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer"
+          >
+            Cancel
+          </button>
+
+          {!candidateToEdit && (
+            <button
+              type="button"
+              onClick={() => handleSave(true)}
+              disabled={Boolean(duplicateMatch && !confirmDuplicate)}
+              className="min-h-[44px] px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-900 font-bold text-xs transition-all cursor-pointer"
+            >
+              Save & Add Another
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => handleSave(false)}
+            disabled={Boolean(duplicateMatch && !confirmDuplicate)}
+            className="min-h-[44px] px-5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md cursor-pointer"
+          >
+            {candidateToEdit ? 'Save Changes' : 'Save Candidate'}
+          </button>
+        </div>
+      }
     >
-      <div className="space-y-5">
+      <div className="space-y-4 text-slate-900">
         {successMessage && (
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2 font-bold animate-pulse">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex items-center gap-2 font-bold">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
             <span>{successMessage}</span>
           </div>
         )}
 
         {duplicateMatch && (
-          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2">
-            <div className="flex items-center gap-2 font-bold text-amber-400">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs space-y-2">
+            <div className="flex items-center gap-2 font-bold text-amber-900">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
               <span>Duplicate Candidate Warning</span>
             </div>
-            <p>
+            <p className="text-amber-900">
               A candidate with matching mobile or email already exists: <strong>{duplicateMatch.fullName}</strong> ({duplicateMatch.phone}, {duplicateMatch.email}), Assigned to: {duplicateMatch.assignedRecruiterName}.
             </p>
-            <label className="flex items-center gap-2 pt-1 font-medium cursor-pointer text-white">
+            <label className="flex items-center gap-2.5 pt-1 font-bold cursor-pointer text-slate-900 min-h-[44px]">
               <input
                 type="checkbox"
                 checked={confirmDuplicate}
                 onChange={(e) => setConfirmDuplicate(e.target.checked)}
-                className="rounded border-amber-500 text-amber-500 focus:ring-amber-500 w-4 h-4"
+                className="rounded border-amber-500 text-[#0B1F4B] focus:ring-[#0B1F4B] w-5 h-5"
               />
               <span>I confirm I want to proceed and save despite the duplicate match.</span>
             </label>
+            {errors.duplicate && <p className="text-xs text-rose-700 font-bold">{errors.duplicate}</p>}
           </div>
         )}
 
-        {/* Essentials Form (Default Visible) */}
+        {/* Essentials Form (Single column on phones, 2 cols on sm+) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">
-              Full Name <span className="text-rose-500">*</span>
+            <label className="block text-xs font-bold text-slate-800 mb-1">
+              Full Name <span className="text-rose-600">*</span>
             </label>
             <input
               type="text"
-              autoFocus
+              autoComplete="name"
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="e.g. Rahul Sharma"
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
             />
-            {errors.fullName && <p className="text-[10px] text-rose-400 mt-1">{errors.fullName}</p>}
+            {errors.fullName && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.fullName}</p>}
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">
-              Mobile Number (+91) <span className="text-rose-500">*</span>
+            <label className="block text-xs font-bold text-slate-800 mb-1">
+              Mobile Number (+91) <span className="text-rose-600">*</span>
             </label>
             <input
-              type="text"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+91 98765 43210"
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
             />
-            {errors.phone && <p className="text-[10px] text-rose-400 mt-1">{errors.phone}</p>}
+            {errors.phone && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.phone}</p>}
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">
-              Email Address <span className="text-rose-500">*</span>
+            <label className="block text-xs font-bold text-slate-800 mb-1">
+              Email Address <span className="text-rose-600">*</span>
             </label>
             <input
               type="email"
+              inputMode="email"
+              autoComplete="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="rahul.sharma@example.com"
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
             />
-            {errors.email && <p className="text-[10px] text-rose-400 mt-1">{errors.email}</p>}
+            {errors.email && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.email}</p>}
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Current City</label>
+            <label className="block text-xs font-bold text-slate-800 mb-1">Current City</label>
             <input
               type="text"
+              autoComplete="address-level2"
               value={city}
               onChange={(e) => setCity(e.target.value)}
               placeholder="Noida / Delhi / Gurgaon"
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Total Experience (Years)</label>
+            <label className="block text-xs font-bold text-slate-800 mb-1">Total Experience (Years)</label>
             <input
               type="number"
+              inputMode="decimal"
               step="0.5"
               min="0"
               max="40"
               value={experienceYears}
               onChange={(e) => setExperienceYears(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
             />
-            {errors.experienceYears && <p className="text-[10px] text-rose-400 mt-1">{errors.experienceYears}</p>}
+            {errors.experienceYears && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.experienceYears}</p>}
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Position / Job Applied For</label>
+            <label className="block text-xs font-bold text-slate-800 mb-1">Position / Job Applied For</label>
             <select
               value={jobId}
               onChange={(e) => setJobId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
             >
               <option value="">General Talent Pool / Unassigned</option>
               {jobs.filter((j) => j.status === 'Open').map((j) => (
@@ -356,12 +398,12 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Source</label>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-bold text-slate-800 mb-1">Source</label>
             <select
               value={source}
               onChange={(e) => setSource(e.target.value as any)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
             >
               {companySettings.availableSources.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -371,69 +413,72 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
         </div>
 
         {/* Collapsible More Details */}
-        <div className="pt-2 border-t border-slate-800">
+        <div className="pt-2 border-t border-slate-200">
           <button
             type="button"
             onClick={() => setShowMoreDetails(!showMoreDetails)}
-            className="flex items-center gap-2 text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+            className="min-h-[44px] w-full px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex items-center justify-between text-xs font-bold text-[#0B1F4B] transition-colors cursor-pointer"
           >
-            <span>{showMoreDetails ? 'Hide More Details' : 'Show More Details (Salary, Education, Skills, Recruiter)'}</span>
+            <span>{showMoreDetails ? 'Hide More Details' : 'More Details (Salary, Education, Skills, Recruiter)'}</span>
             {showMoreDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
 
           {showMoreDetails && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 mt-2 border-t border-slate-800/60 bg-slate-850 p-4 rounded-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 mt-2 bg-slate-50 border border-slate-200 p-4 rounded-xl">
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Current Company</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Current Company</label>
                 <input
                   type="text"
+                  autoComplete="organization"
                   value={currentCompany}
                   onChange={(e) => setCurrentCompany(e.target.value)}
                   placeholder="e.g. TCS / Wipro"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Education</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Education</label>
                 <input
                   type="text"
                   value={education}
                   onChange={(e) => setEducation(e.target.value)}
                   placeholder="B.Tech / MBA / MCA"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Current Salary (LPA)</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Current Salary (LPA)</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   step="0.5"
                   min="0"
                   value={currentSalaryLPA}
                   onChange={(e) => setCurrentSalaryLPA(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Expected Salary (LPA)</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Expected Salary (LPA)</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   step="0.5"
                   min="0"
                   value={expectedSalaryLPA}
                   onChange={(e) => setExpectedSalaryLPA(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
                 />
                 {expectedSalaryLPA < currentSalaryLPA && (
-                  <p className="text-[10px] text-amber-400 mt-1">Warning: Expected salary is lower than current salary.</p>
+                  <p className="text-xs text-amber-800 font-semibold mt-1">Warning: Expected salary is lower than current salary.</p>
                 )}
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-slate-300 mb-1">Skills</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Skills</label>
                 <div className="flex gap-2 mb-2">
                   <input
                     type="text"
@@ -441,25 +486,30 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
                     onChange={(e) => setNewSkillInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddSkill(); } }}
                     placeholder="Add skill and press enter"
-                    className="flex-1 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+                    className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleAddSkill}
-                    className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold cursor-pointer"
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold cursor-pointer"
                   >
                     Add
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {skills.map((skill) => (
                     <span
                       key={skill}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-medium"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-[#0B1F4B] text-xs font-bold"
                     >
                       {skill}
-                      <button type="button" onClick={() => handleRemoveSkill(skill)} className="hover:text-rose-400">
-                        <X className="w-3 h-3" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSkill(skill)}
+                        className="p-1 hover:text-rose-600 cursor-pointer"
+                        title={`Remove ${skill}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </span>
                   ))}
@@ -467,11 +517,11 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Assigned Recruiter</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Assigned Recruiter</label>
                 <select
                   value={assignedRecruiterId}
                   onChange={(e) => setAssignedRecruiterId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
                 >
                   {users.filter(u => u.active).map((u) => (
                     <option key={u.id} value={u.id}>
@@ -482,13 +532,13 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Candidate Status</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Candidate Status</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value as CandidateStatus)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+                  className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
                 >
-                  {['New', 'Screened', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Offered', 'Joined', 'Rejected', 'On Hold'].map((st) => (
+                  {['New', 'Screened', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Offered', 'Placed', 'Rejected', 'On Hold'].map((st) => (
                     <option key={st} value={st}>{st}</option>
                   ))}
                 </select>
@@ -499,11 +549,11 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
 
         {/* Mandatory Edit Reason when Editing */}
         {candidateToEdit && (
-          <div className="p-4 rounded-xl bg-slate-850 border border-slate-700 space-y-3">
-            <label className="block text-xs font-bold text-amber-400">
-              Purpose / Reason for Edit <span className="text-rose-500">*</span> (Mandatory, min 10 chars)
+          <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-300 space-y-3">
+            <label className="block text-xs font-bold text-amber-950">
+              Purpose / Reason for Edit <span className="text-rose-600">*</span> (Mandatory, min 10 chars)
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {['Candidate updated details', 'Correction of wrong entry', 'New information received', 'Status update', 'Other'].map((opt) => (
                 <button
                   key={opt}
@@ -512,10 +562,10 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
                     setQuickReasonOption(opt);
                     setEditReason(opt);
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border text-left transition-all cursor-pointer ${
+                  className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-semibold border text-left transition-all cursor-pointer ${
                     quickReasonOption === opt
-                      ? 'bg-[#F5A623]/20 border-[#F5A623] text-amber-300 font-bold'
-                      : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750'
+                      ? 'bg-[#0B1F4B] border-[#0B1F4B] text-white font-bold'
+                      : 'bg-white border-slate-300 text-slate-800 hover:bg-slate-100'
                   }`}
                 >
                   {opt}
@@ -527,42 +577,11 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
               value={editReason}
               onChange={(e) => setEditReason(e.target.value)}
               placeholder="Or type specific edit reason here (minimum 10 characters)..."
-              className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-[#F5A623] focus:outline-none"
+              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
             />
-            {errors.editReason && <p className="text-[10px] text-rose-400">{errors.editReason}</p>}
+            {errors.editReason && <p className="text-xs text-rose-600 font-bold">{errors.editReason}</p>}
           </div>
         )}
-
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
-          >
-            Cancel
-          </button>
-
-          {!candidateToEdit && (
-            <button
-              type="button"
-              onClick={() => handleSave(true)}
-              disabled={Boolean(duplicateMatch && !confirmDuplicate)}
-              className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-bold text-xs transition-all cursor-pointer"
-            >
-              Save & Add Another
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => handleSave(false)}
-            disabled={Boolean(duplicateMatch && !confirmDuplicate)}
-            className="px-5 py-2 rounded-xl bg-[#F5A623] hover:bg-amber-500 disabled:opacity-50 text-slate-950 font-extrabold text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
-          >
-            {candidateToEdit ? 'Save Changes' : 'Save Candidate'}
-          </button>
-        </div>
       </div>
     </Modal>
   );

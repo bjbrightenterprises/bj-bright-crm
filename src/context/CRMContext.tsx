@@ -38,6 +38,8 @@ interface CRMContextType {
   logoutFromFirebase: () => Promise<void>;
   sendForgotPasswordEmail: (email: string) => Promise<void>;
   loadStarterData: () => Promise<{ loaded: boolean; clientsCount: number; jobsCount: number }>;
+  migrationNotice: string;
+  clearMigrationNotice: () => void;
 
   currentUser: User;
   switchUser: (userId: string) => void;
@@ -201,28 +203,13 @@ interface CRMContextType {
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => dataService.getTheme() === 'dark');
-
-  const toggleDarkMode = () => {
-    setIsDarkMode((prev) => {
-      const next = !prev;
-      dataService.setTheme(next ? 'dark' : 'light');
-      if (next) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-      return next;
-    });
-  };
+  const isDarkMode = false;
+  const toggleDarkMode = () => {};
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [isDarkMode]);
+    document.documentElement.classList.remove('dark');
+    document.documentElement.style.colorScheme = 'light';
+  }, []);
 
   const [globalSearch, setGlobalSearch] = useState('');
 
@@ -235,6 +222,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
   const [hasPendingWrites, setHasPendingWrites] = useState<boolean>(false);
+  const [migrationNotice, setMigrationNotice] = useState<string>('');
+  const clearMigrationNotice = () => setMigrationNotice('');
 
   // Firestore Collections State
   const [users, setUsers] = useState<User[]>([]);
@@ -372,6 +361,17 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dataService.subscribeToEditHistory(setEditHistories),
       dataService.subscribeToSettings(setCompanySettings),
     ];
+
+    if (role === 'admin') {
+      dataService
+        .runJoinedToPlacedMigrationIfNeeded(uid)
+        .then((res) => {
+          if (res.ran) {
+            setMigrationNotice(`Updated ${res.updatedCount} records to Placed`);
+          }
+        })
+        .catch(() => {});
+    }
 
     return () => {
       unsubs.forEach((u) => u());
@@ -874,7 +874,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           source: (item.source as any) || 'Naukri',
           assignedRecruiterId: currentUser.id,
           assignedRecruiterName: currentUser.name,
-          status: (item.status as any) || 'New',
+          status:
+            ((item.status as string) === 'Joined' ? 'Placed' : (item.status as any)) || 'New',
         });
         imported++;
       }
@@ -930,7 +931,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           source: (r.data.source as any) || 'Naukri',
           assignedRecruiterId: assignedId,
           assignedRecruiterName: assignedName,
-          status: (r.data.status as any) || 'New',
+          status:
+            ((r.data.status as string) === 'Joined' ? 'Placed' : (r.data.status as any)) || 'New',
           jobTitle: r.data.jobTitle,
           clientName: r.data.clientName,
           expectedJoiningDate: r.data.expectedJoiningDate,
@@ -1410,7 +1412,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'Submitted to Client': 'Shortlisted',
           Interview: 'Interview Scheduled',
           Offer: 'Offered',
-          Joined: 'Joined',
+          Placed: 'Placed',
           Rejected: 'Rejected',
         };
         const mappedStatus = stageToStatusMap[newStage];
@@ -1774,6 +1776,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logoutFromFirebase,
         sendForgotPasswordEmail,
         loadStarterData,
+        migrationNotice,
+        clearMigrationNotice,
         currentUser,
         switchUser,
         changeMyPassword,

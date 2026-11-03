@@ -134,7 +134,7 @@ export const CANDIDATE_EXPORT_COLUMNS: ExportColumnDef[] = [
     key: 'status',
     header: 'Hiring Status',
     description: 'Current stage in talent recruitment lifecycle',
-    allowedValues: 'New, Screened, Shortlisted, Interview Scheduled, Selected, Offered, Joined, Rejected, On Hold',
+    allowedValues: 'New, Screened, Shortlisted, Interview Scheduled, Selected, Offered, Placed, Rejected, On Hold',
     dataType: 'Text',
     width: 20,
     validationList: [
@@ -144,11 +144,11 @@ export const CANDIDATE_EXPORT_COLUMNS: ExportColumnDef[] = [
       'Interview Scheduled',
       'Selected',
       'Offered',
-      'Joined',
+      'Placed',
       'Rejected',
       'On Hold',
     ],
-    getValue: (c: Candidate) => c.status,
+    getValue: (c: Candidate) => ((c.status as string) === 'Joined' ? 'Placed' : c.status),
   },
   {
     key: 'jobTitle',
@@ -306,8 +306,8 @@ export function generateCandidatesSummarySheet(
   const kpiRow = 3;
   ws.getCell(`A${kpiRow}`).value = 'Total Talent Pool';
   ws.getCell(`B${kpiRow}`).value = { formula: `COUNTA(${dataSheetName}!A2:A${rowCount + 1})` };
-  ws.getCell(`C${kpiRow}`).value = 'Total Placements (Joined)';
-  ws.getCell(`D${kpiRow}`).value = { formula: `COUNTIF(${dataSheetName}!M2:M${rowCount + 1}, "Joined")` };
+  ws.getCell(`C${kpiRow}`).value = 'Total Placements (Placed)';
+  ws.getCell(`D${kpiRow}`).value = { formula: `COUNTIF(${dataSheetName}!M2:M${rowCount + 1}, "Placed")` };
 
   ws.getCell(`A${kpiRow + 1}`).value = 'Active Offers Pending';
   ws.getCell(`B${kpiRow + 1}`).value = { formula: `COUNTIF(${dataSheetName}!M2:M${rowCount + 1}, "Offered")` };
@@ -346,7 +346,7 @@ export function generateCandidatesSummarySheet(
     'Interview Scheduled',
     'Selected',
     'Offered',
-    'Joined',
+    'Placed',
     'Rejected',
     'On Hold',
   ];
@@ -1024,7 +1024,7 @@ export const PIPELINE_EXPORT_COLUMNS: ExportColumnDef[] = [
     key: 'stage',
     header: 'Hiring Stage',
     description: 'Current stage in talent funnel',
-    allowedValues: 'Sourced, Screened, Submitted to Client, Interview, Offer, Joined, Rejected',
+    allowedValues: 'Sourced, Screened, Submitted to Client, Interview, Offer, Placed, Rejected',
     dataType: 'Text',
     width: 22,
     validationList: [
@@ -1033,10 +1033,10 @@ export const PIPELINE_EXPORT_COLUMNS: ExportColumnDef[] = [
       'Submitted to Client',
       'Interview',
       'Offer',
-      'Joined',
+      'Placed',
       'Rejected',
     ],
-    getValue: (p: PipelineItem) => p.stage,
+    getValue: (p: PipelineItem) => ((p.stage as string) === 'Joined' ? 'Placed' : p.stage),
   },
   {
     key: 'lastMovedBy',
@@ -1141,8 +1141,8 @@ export const PERFORMANCE_REPORT_EXPORT_COLUMNS: ExportColumnDef[] = [
   },
   {
     key: 'joiningsPlaced',
-    header: 'Joinings Placed',
-    description: 'Successful joins / revenue placements',
+    header: 'Placements',
+    description: 'Successful placements',
     allowedValues: 'Integer >= 0',
     dataType: 'Number',
     format: '#,##0',
@@ -1202,7 +1202,7 @@ export function generatePerformanceSummarySheet(
   const kpiRow = 3;
   ws.getCell(`A${kpiRow}`).value = 'Total Team Members';
   ws.getCell(`B${kpiRow}`).value = { formula: `COUNTA(${dataSheetName}!A2:A${rowCount + 1})` };
-  ws.getCell(`C${kpiRow}`).value = 'Total Joinings Placed';
+  ws.getCell(`C${kpiRow}`).value = 'Total Placements';
   ws.getCell(`D${kpiRow}`).value = { formula: `SUM(${dataSheetName}!H2:H${rowCount + 1})` };
 
   ws.getCell(`A${kpiRow + 1}`).value = 'Total Candidates Sourced';

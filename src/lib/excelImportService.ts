@@ -61,7 +61,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
   listsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   listsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B1F4B' } };
 
-  const candidateStatuses = ['New', 'Screened', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Offered', 'Joined', 'Rejected', 'On Hold'];
+  const candidateStatuses = ['New', 'Screened', 'Shortlisted', 'Interview Scheduled', 'Selected', 'Offered', 'Placed', 'Rejected', 'On Hold'];
   const sources = ['Naukri', 'LinkedIn', 'Referral', 'Walk-in', 'Foundit', 'Direct', 'Internal Database'];
   const cities = ['Noida', 'Delhi NCR', 'Gurgaon', 'Bangalore', 'Mumbai', 'Pune', 'Hyderabad', 'Chennai', 'Remote'];
   const industries = ['Information Technology & Services', 'Fintech & Payments', 'E-Commerce & Retail', 'Banking & Financial Services', 'Healthcare & Pharma'];
@@ -386,6 +386,10 @@ export function validateCandidateRow(
 ): { isValid: boolean; isDuplicate: boolean; duplicateCandidate?: Candidate; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  if (typeof data.status === 'string' && data.status.trim().toLowerCase() === 'joined') {
+    data.status = 'Placed';
+  }
 
   // Name validation
   const name = String(data.fullName || '').trim();

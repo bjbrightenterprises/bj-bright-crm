@@ -1,32 +1,102 @@
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    --brand-navy: #0B1F4B;
-    --brand-navy-dark: #071533;
-    --brand-gold: #F5A623;
+/* Enforce Light-Only Theme Across All OS/Browsers */
+:root,
+html,
+body {
+  color-scheme: light !important;
+  background-color: #f8fafc;
+  color: #0f172a;
+  max-width: 100vw;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Safe-area inset utilities for notched phones and home indicators */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pl-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.pr-safe {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Explicit high-contrast text & background for all form controls in Light Mode */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+select,
+textarea {
+  color-scheme: light !important;
+  background-color: #ffffff;
+  color: #0f172a;
+  scroll-margin-bottom: 140px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+select option,
+optgroup {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Chrome / Safari Autofill override: never leave white text on light background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #0f172a !important;
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: #0f172a;
+}
+
+/* Prevent iOS Safari auto-zoom on input focus (< 768px requires >= 16px font-size) */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+    min-height: 44px;
   }
 
-  body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  button,
+  [role="button"],
+  a.btn-touch {
+    min-height: 44px;
   }
 }
 
-/* Custom scrollbars for Kanban boards and tables */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Fluid typography & spacing helpers */
+.fluid-heading {
+  font-size: clamp(1.125rem, 2.2vw, 1.5rem);
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+.fluid-container {
+  padding-left: clamp(0.75rem, 2.5vw, 2rem);
+  padding-right: clamp(0.75rem, 2.5vw, 2rem);
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.25);
-  border-radius: 9999px;
+/* Sticky table first column shadow on horizontal scroll */
+.sticky-col-first {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background-color: #ffffff;
+  box-shadow: 2px 0 6px -2px rgba(15, 23, 42, 0.08);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.45);
+thead .sticky-col-first {
+  background-color: #f8fafc;
+  z-index: 15;
 }

@@ -24,7 +24,7 @@ export type CandidateStatus =
   | 'Interview Scheduled'
   | 'Selected'
   | 'Offered'
-  | 'Joined'
+  | 'Placed'
   | 'Rejected'
   | 'On Hold';
 
@@ -178,7 +178,7 @@ export type PipelineStage =
   | 'Submitted to Client'
   | 'Interview'
   | 'Offer'
-  | 'Joined'
+  | 'Placed'
   | 'Rejected';
 
 export interface PipelineItem {

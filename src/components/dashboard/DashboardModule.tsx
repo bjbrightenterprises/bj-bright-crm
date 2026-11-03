@@ -4,14 +4,10 @@ import {
   Building2,
   Briefcase,
   Calendar,
-  Clock,
   CheckCircle2,
-  AlertTriangle,
   Video,
-  MapPin,
   CheckSquare,
   Sparkles,
-  ArrowRight,
   UserCheck,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
@@ -40,7 +36,7 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
     updateCandidate,
   } = useCRM();
 
-  // Metrics (4 KPI cards as requested; Active Clients counts only Green companies)
+  // Metrics (4 KPI cards; Active Clients counts only Green companies)
   const totalCandidates = visibleCandidates.length;
   const activeClients = visibleClients.filter((c) => getClientSection(c) === 'Green').length;
   const openJobs = visibleJobs.filter((j) => j.status === 'Open').length;
@@ -52,7 +48,6 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
     return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   };
   const todayStr = toISTDateStr(0);
-  const tomorrowStr = toISTDateStr(1);
   const twoDaysLaterStr = toISTDateStr(2);
 
   // Follow-up Alerts panel items
@@ -85,24 +80,24 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
   };
 
   const handleMarkCandidateJoined = (candidateId: string) => {
-    updateCandidate(candidateId, { status: 'Joined' });
+    updateCandidate(candidateId, { status: 'Placed' }, 'Marked as Placed from Joining Alert');
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Welcome Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#0B1F4B] via-[#0e275f] to-[#163270] text-white p-6 md:p-8 shadow-xl">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#0B1F4B] via-[#0e275f] to-[#163270] text-white p-5 sm:p-6 md:p-8 shadow-md">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#F5A623]/20 via-transparent to-transparent pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-amber-300 text-xs font-semibold backdrop-blur-xs mb-3 border border-white/10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-amber-300 text-xs font-semibold backdrop-blur-xs mb-2.5 border border-white/15">
               <Sparkles className="w-3.5 h-3.5 text-[#F5A623]" />
               <span>BJ Bright Enterprises • Noida Sec 62</span>
             </div>
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Namaste, {currentUser.name}
             </h2>
-            <p className="text-slate-300 text-sm mt-1 max-w-xl">
+            <p className="text-slate-200 text-xs sm:text-sm mt-1 max-w-xl leading-relaxed">
               Welcome to your recruitment dashboard. You have{' '}
               <span className="font-semibold text-amber-300">{todaysInterviews.length} interviews today</span>,{' '}
               <span className="font-semibold text-emerald-300">{openJobs} open jobs</span>, and{' '}
@@ -110,154 +105,162 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5">
             <button
               onClick={() => onNavigate('tasks')}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs border border-white/20 transition-all flex items-center gap-2 cursor-pointer"
+              className="min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs border border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <CheckSquare className="w-4 h-4 text-[#F5A623]" />
+              <CheckSquare className="w-4 h-4 text-[#F5A623] shrink-0" />
               <span>My Tasks ({pendingTasksCount})</span>
             </button>
             <button
               onClick={onOpenScheduleInterview}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs border border-white/20 transition-all flex items-center gap-2 cursor-pointer"
+              className="min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-xs border border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Calendar className="w-4 h-4 text-[#F5A623]" />
+              <Calendar className="w-4 h-4 text-[#F5A623] shrink-0" />
               <span>Schedule Interview</span>
             </button>
             <button
               onClick={onOpenCandidateForm}
-              className="px-4 py-2.5 rounded-xl bg-[#F5A623] hover:bg-[#e09312] text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 cursor-pointer"
+              className="col-span-2 sm:col-span-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-[#F5A623] hover:bg-[#e09312] text-slate-950 text-xs font-extrabold shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Users className="w-4 h-4" />
+              <Users className="w-4 h-4 shrink-0" />
               <span>Add Candidate</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* 4 KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* 4 KPI Cards (2x2 on mobile/tablet, 4-across on desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
         <div
           onClick={() => onNavigate('candidates')}
-          className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:border-[#0B1F4B] transition-all cursor-pointer group"
+          className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-[#0B1F4B] transition-all cursor-pointer group"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-[#0B1F4B] dark:text-blue-400 flex items-center justify-center font-bold">
-              <Users className="w-5 h-5" />
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3 gap-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-50 text-[#0B1F4B] flex items-center justify-center font-bold shrink-0">
+              <Users className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <span className="text-[10px] uppercase font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] uppercase font-bold text-emerald-900 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full truncate">
               Active Network
             </span>
           </div>
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Candidates</span>
-          <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-1 group-hover:text-blue-600 transition-colors">
+          <span className="text-[11px] sm:text-xs font-bold text-slate-600 uppercase tracking-wider block">
+            Total Candidates
+          </span>
+          <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1 group-hover:text-[#0B1F4B] transition-colors">
             {totalCandidates}
           </p>
         </div>
 
         <div
           onClick={() => onNavigate('clients')}
-          className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:border-[#0B1F4B] transition-all cursor-pointer group"
+          className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-[#0B1F4B] transition-all cursor-pointer group"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-[#F5A623] flex items-center justify-center font-bold">
-              <Building2 className="w-5 h-5" />
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3 gap-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold shrink-0">
+              <Building2 className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] uppercase font-bold text-amber-900 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full truncate">
               Verified Partners
             </span>
           </div>
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Clients</span>
-          <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-1 group-hover:text-amber-500 transition-colors">
+          <span className="text-[11px] sm:text-xs font-bold text-slate-600 uppercase tracking-wider block">
+            Active Clients
+          </span>
+          <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1 group-hover:text-amber-700 transition-colors">
             {activeClients}
           </p>
         </div>
 
         <div
           onClick={() => onNavigate('jobs')}
-          className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:border-[#0B1F4B] transition-all cursor-pointer group"
+          className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-[#0B1F4B] transition-all cursor-pointer group"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
-              <Briefcase className="w-5 h-5" />
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3 gap-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold shrink-0">
+              <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <span className="text-[10px] uppercase font-bold text-purple-600 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] uppercase font-bold text-purple-900 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded-full truncate">
               NCR Openings
             </span>
           </div>
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Open Job Mandates</span>
-          <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-1 group-hover:text-purple-600 transition-colors">
+          <span className="text-[11px] sm:text-xs font-bold text-slate-600 uppercase tracking-wider block">
+            Open Job Mandates
+          </span>
+          <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1 group-hover:text-purple-700 transition-colors">
             {openJobs}
           </p>
         </div>
 
         <div
           onClick={() => onNavigate('tasks')}
-          className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:border-[#0B1F4B] transition-all cursor-pointer group"
+          className="p-3.5 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-[#0B1F4B] transition-all cursor-pointer group"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center font-bold">
-              <CheckSquare className="w-5 h-5" />
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3 gap-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center font-bold shrink-0">
+              <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <span className="text-[10px] uppercase font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] uppercase font-bold text-rose-900 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-full truncate">
               Action Required
             </span>
           </div>
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending Tasks</span>
-          <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-1 group-hover:text-rose-600 transition-colors">
+          <span className="text-[11px] sm:text-xs font-bold text-slate-600 uppercase tracking-wider block">
+            Pending Tasks
+          </span>
+          <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1 group-hover:text-rose-700 transition-colors">
             {pendingTasksCount}
           </p>
         </div>
       </div>
 
-      {/* Follow-up Alerts Panel (3 Columns) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+      {/* Follow-up Alerts Panel (3 Columns on Desktop, Stacked on Mobile) */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 sm:p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3.5">
           <div>
-            <h3 className="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#F5A623]" />
-              Follow-up & Action Alerts (Noida IST)
+            <h3 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[#F5A623] shrink-0" />
+              <span>Follow-up & Action Alerts (Noida IST)</span>
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600 mt-0.5">
               Immediate action items requiring recruitment follow-up today
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Column 1: Today's Pending Interviews */}
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                <Video className="w-3.5 h-3.5 text-purple-600" />
-                Interviews Today ({todaysInterviews.length})
+              <span className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Video className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                <span>Interviews Today ({todaysInterviews.length})</span>
               </span>
               <button
                 onClick={() => onNavigate('interviews')}
-                className="text-[11px] font-bold text-blue-600 dark:text-amber-400 hover:underline"
+                className="min-h-[32px] px-2 text-xs font-bold text-[#0B1F4B] hover:underline cursor-pointer"
               >
                 View All
               </button>
             </div>
 
             {todaysInterviews.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-4 text-center">No interviews scheduled for today.</p>
+              <p className="text-xs text-slate-500 italic py-4 text-center">No interviews scheduled for today.</p>
             ) : (
               <div className="space-y-2.5">
                 {todaysInterviews.map((item) => (
                   <div
                     key={item.id}
                     onClick={() => onNavigate('interviews')}
-                    className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs hover:border-purple-400 transition-all cursor-pointer space-y-1"
+                    className="p-3 rounded-lg bg-white border border-slate-200 shadow-2xs hover:border-purple-400 transition-all cursor-pointer space-y-1"
                   >
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold text-xs text-slate-900 dark:text-white">{item.candidateName}</p>
-                      <span className="text-[10px] font-mono font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950 px-2 py-0.5 rounded">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-bold text-xs text-slate-900 truncate">{item.candidateName}</p>
+                      <span className="text-[10px] font-mono font-bold text-purple-900 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded shrink-0">
                         {item.dateTime.slice(11, 16)} IST
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-300">{item.roundName} @ {item.clientName}</p>
+                    <p className="text-[11px] text-slate-700 truncate">{item.roundName} @ {item.clientName}</p>
                   </div>
                 ))}
               </div>
@@ -265,68 +268,68 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
           </div>
 
           {/* Column 2: Client Follow-ups Due Today or Overdue */}
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-[#F5A623]" />
-                Client Follow-ups ({totalClientFollowUpsCount})
+              <span className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Client Follow-ups ({totalClientFollowUpsCount})</span>
               </span>
               <button
                 onClick={() => onNavigate('clients')}
-                className="text-[11px] font-bold text-blue-600 dark:text-amber-400 hover:underline"
+                className="min-h-[32px] px-2 text-xs font-bold text-[#0B1F4B] hover:underline cursor-pointer"
               >
                 View Clients
               </button>
             </div>
 
             {totalClientFollowUpsCount === 0 ? (
-              <p className="text-xs text-slate-400 italic py-4 text-center">All client follow-ups completed.</p>
+              <p className="text-xs text-slate-500 italic py-4 text-center">All client follow-ups completed.</p>
             ) : (
               <div className="space-y-2.5">
                 {clientsWithDueFollowUp.map((client) => (
                   <div
                     key={`client-fu-${client.id}`}
                     onClick={() => onNavigate('clients')}
-                    className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs hover:border-amber-400 transition-all cursor-pointer space-y-1.5"
+                    className="p-3 rounded-lg bg-white border border-slate-200 shadow-2xs hover:border-amber-400 transition-all cursor-pointer space-y-1.5"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-bold text-xs text-slate-900 dark:text-white leading-snug">{client.companyName}</p>
+                      <p className="font-bold text-xs text-slate-900 leading-snug">{client.companyName}</p>
                       {client.nextFollowUpDate && client.nextFollowUpDate < todayStr ? (
-                        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-bold shrink-0">
+                        <span className="text-[10px] uppercase px-2 py-0.5 rounded bg-rose-100 text-rose-900 border border-rose-200 font-bold shrink-0">
                           Overdue
                         </span>
                       ) : (
-                        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold shrink-0">
+                        <span className="text-[10px] uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200 font-bold shrink-0">
                           Due Today
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center justify-between text-[10px] text-slate-500">
-                      <span>{client.hrContacts?.[0]?.name || 'Contact'} • {client.city}</span>
-                      <span className="font-medium">Follow-up: {client.nextFollowUpDate}</span>
+                    <div className="flex items-center justify-between text-[11px] text-slate-600">
+                      <span className="truncate">{client.hrContacts?.[0]?.name || 'Contact'} • {client.city}</span>
+                      <span className="font-medium shrink-0">Follow-up: {client.nextFollowUpDate}</span>
                     </div>
                   </div>
                 ))}
                 {clientFollowUpTasksDue.map((task) => (
                   <div
                     key={task.id}
-                    className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs space-y-2"
+                    className="p-3 rounded-lg bg-white border border-slate-200 shadow-2xs space-y-2"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-bold text-xs text-slate-900 dark:text-white leading-snug">{task.title}</p>
+                      <p className="font-bold text-xs text-slate-900 leading-snug">{task.title}</p>
                       {task.dueDate < todayStr && (
-                        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-bold shrink-0">
+                        <span className="text-[10px] uppercase px-2 py-0.5 rounded bg-rose-100 text-rose-900 border border-rose-200 font-bold shrink-0">
                           Overdue
                         </span>
                       )}
                     </div>
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-[10px] text-slate-400 font-medium">Due: {task.dueDate}</span>
+                      <span className="text-[11px] text-slate-600 font-medium">Due: {task.dueDate}</span>
                       <button
                         onClick={() => handleMarkTaskDone(task.id)}
-                        className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                        className="min-h-[34px] px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        <CheckCircle2 className="w-3 h-3" />
+                        <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>Mark Done</span>
                       </button>
                     </div>
@@ -337,22 +340,22 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
           </div>
 
           {/* Column 3: Candidate Joinings Due Today / Tomorrow / 2 Days */}
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-emerald-600" />
-                Candidate Joinings ({candidateJoiningsDue.length})
+              <span className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span>Candidate Joining ({candidateJoiningsDue.length})</span>
               </span>
               <button
                 onClick={() => onNavigate('candidates')}
-                className="text-[11px] font-bold text-blue-600 dark:text-amber-400 hover:underline"
+                className="min-h-[32px] px-2 text-xs font-bold text-[#0B1F4B] hover:underline cursor-pointer"
               >
                 View Candidates
               </button>
             </div>
 
             {candidateJoiningsDue.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-4 text-center">No joinings scheduled for next 48 hours.</p>
+              <p className="text-xs text-slate-500 italic py-4 text-center">No joinings scheduled for next 48 hours.</p>
             ) : (
               <div className="space-y-2.5">
                 {candidateJoiningsDue.map((cand) => {
@@ -360,24 +363,30 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({
                   return (
                     <div
                       key={cand.id}
-                      className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs space-y-2"
+                      className="p-3 rounded-lg bg-white border border-slate-200 shadow-2xs space-y-2"
                     >
-                      <div className="flex items-center justify-between">
-                        <p className="font-bold text-xs text-slate-900 dark:text-white">{cand.fullName}</p>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${isOverdue ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-bold text-xs text-slate-900 truncate">{cand.fullName}</p>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border shrink-0 ${
+                            isOverdue
+                              ? 'bg-rose-100 text-rose-900 border-rose-200'
+                              : 'bg-emerald-100 text-emerald-900 border-emerald-200'
+                          }`}
+                        >
                           {isOverdue ? 'Joining Overdue' : `Joining: ${cand.expectedJoiningDate}`}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                      <p className="text-[11px] text-slate-700 truncate">
                         {cand.jobTitle || 'Role'} @ {cand.clientName || 'Client'}
                       </p>
                       <div className="flex items-center justify-end pt-1">
                         <button
                           onClick={() => handleMarkCandidateJoined(cand.id)}
-                          className="px-3 py-1 rounded bg-[#0B1F4B] hover:bg-[#163270] text-white text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                          className="min-h-[34px] px-3 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                         >
-                          <UserCheck className="w-3 h-3 text-[#F5A623]" />
-                          <span>Mark Joined</span>
+                          <UserCheck className="w-3.5 h-3.5 text-[#F5A623]" />
+                          <span>Placed</span>
                         </button>
                       </div>
                     </div>

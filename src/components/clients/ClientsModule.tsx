@@ -17,7 +17,6 @@ import {
   ArrowRightLeft,
   RotateCcw,
   AlertCircle,
-  CheckCircle2,
   Clock,
   X,
   Briefcase,
@@ -54,6 +53,7 @@ interface ClientsModuleProps {
 const SECTION_CONFIG: Array<{
   section: ClientSection;
   title: string;
+  shortTitle: string;
   subtitle: string;
   keyDateLabel: string;
   headerBg: string;
@@ -65,37 +65,40 @@ const SECTION_CONFIG: Array<{
   {
     section: 'Green',
     title: 'Active Clients',
+    shortTitle: 'Active',
     subtitle: 'Agreement signed, currently hiring for us',
     keyDateLabel: 'Agreement Signed',
     headerBg: 'bg-emerald-700 text-white',
-    borderClass: 'border-emerald-200 dark:border-emerald-800/70',
-    badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
+    borderClass: 'border-emerald-200',
+    badgeClass: 'bg-emerald-100 text-emerald-900 border border-emerald-200',
     summaryCardClass:
-      'border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200',
+      'border-emerald-300 bg-emerald-50 text-emerald-950',
     dotClass: 'bg-emerald-500',
   },
   {
     section: 'Blue',
     title: 'In Discussion',
+    shortTitle: 'Discussion',
     subtitle: 'We have spoken to them, agreement NOT signed yet',
     keyDateLabel: 'Last Contacted',
     headerBg: 'bg-blue-700 text-white',
-    borderClass: 'border-blue-200 dark:border-blue-800/70',
-    badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300',
+    borderClass: 'border-blue-200',
+    badgeClass: 'bg-blue-100 text-blue-900 border border-blue-200',
     summaryCardClass:
-      'border-blue-300 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200',
+      'border-blue-300 bg-blue-50 text-blue-950',
     dotClass: 'bg-blue-500',
   },
   {
     section: 'Red',
     title: 'New Enquiries',
+    shortTitle: 'Enquiry',
     subtitle: 'Enquiry received, no conversation has happened yet',
     keyDateLabel: 'Enquiry Received',
     headerBg: 'bg-rose-700 text-white',
-    borderClass: 'border-rose-200 dark:border-rose-800/70',
-    badgeClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300',
+    borderClass: 'border-rose-200',
+    badgeClass: 'bg-rose-100 text-rose-900 border border-rose-200',
     summaryCardClass:
-      'border-rose-300 dark:border-rose-800 bg-rose-50/70 dark:bg-rose-950/30 text-rose-900 dark:text-rose-200',
+      'border-rose-300 bg-rose-50 text-rose-950',
     dotClass: 'bg-rose-500',
   },
 ];
@@ -131,6 +134,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
   const debouncedSearch = useDebouncedValue(search, 200);
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [selectedSectionChip, setSelectedSectionChip] = useState<'All' | ClientSection>('All');
+  const [mobileActiveSection, setMobileActiveSection] = useState<ClientSection>('Green');
   const [onlyOverdueFollowUp, setOnlyOverdueFollowUp] = useState(false);
   const [selectedCity, setSelectedCity] = useState<string>('All');
   const [selectedIndustry, setSelectedIndustry] = useState<string>('All');
@@ -147,11 +151,6 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [reminderClient, setReminderClient] = useState<Client | null>(null);
-
-  // Automatically focus the search box when the Clients page opens
-  React.useEffect(() => {
-    searchInputRef.current?.focus();
-  }, []);
 
   // Sync from globalSearch if navigated via "See all results"
   React.useEffect(() => {
@@ -243,7 +242,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
     ).length;
   }, [visibleClients, todayStr]);
 
-  // Forgiving company search matches (before section/city/industry/overdue filters)
+  // Forgiving company search matches
   const searchMatchedClients = useMemo(() => {
     return searchCompanies(visibleClients, debouncedSearch);
   }, [visibleClients, debouncedSearch]);
@@ -284,10 +283,9 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
     setSelectedCity('All');
     setSelectedIndustry('All');
     setIsSearchDropdownOpen(false);
-    searchInputRef.current?.focus();
   };
 
-  // Total counts across all visibleClients (for summary bar & "X of Y" headers)
+  // Total counts across all visibleClients
   const totalSectionCounts = useMemo(() => {
     const counts: Record<ClientSection, number> = { Green: 0, Blue: 0, Red: 0 };
     visibleClients.forEach((c) => {
@@ -454,15 +452,15 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-[#F5A623]" />
-            Clients & Corporate Companies
+          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-[#F5A623] shrink-0" />
+            <span>Clients & Corporate Companies</span>
           </h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-600 mt-0.5">
             {visibleClients.length} total companies across Active Clients, In Discussion, and New Enquiries
             {!canManageClients && ' • Read-Only View'}
           </p>
@@ -472,10 +470,10 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
           {isAdmin && (
             <button
               onClick={() => setShowTrash((prev) => !prev)}
-              className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
+              className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
                 showTrash
                   ? 'bg-rose-600 text-white border-rose-600'
-                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
               }`}
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -486,16 +484,16 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
           {canManageClients && (
             <button
               onClick={() => setIsImportModalOpen(true)}
-              className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="min-h-[42px] px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Upload className="w-3.5 h-3.5 text-blue-600" />
+              <Upload className="w-3.5 h-3.5 text-[#0B1F4B]" />
               <span>Import Excel</span>
             </button>
           )}
 
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            className="min-h-[42px] px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-white" />
             <span>Export Excel</span>
@@ -508,7 +506,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                 setAddClientInitialName('');
                 setIsFormModalOpen(true);
               }}
-              className="px-4 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="min-h-[42px] px-4 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4 text-[#F5A623]" />
               <span>Add Company</span>
@@ -518,15 +516,15 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
       </div>
 
       {/* Top Summary Bar: Prominent Search + Quick Filter Chips + Three Colour-Coded Counts */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+      <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-2xs space-y-3.5">
         {/* Prominent Search Box & Dropdown */}
-        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center">
+        <div className="flex flex-col md:flex-row gap-2.5 sm:gap-3 items-stretch md:items-center">
           <div ref={searchContainerRef} className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#0B1F4B] dark:text-[#F5A623] pointer-events-none" />
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#0B1F4B] pointer-events-none" />
             <input
               ref={searchInputRef}
-              autoFocus
-              type="text"
+              type="search"
+              inputMode="search"
               placeholder="Search companies by name, industry, city, address, website, contact person, phone, email, or remark..."
               value={search}
               onChange={(e) => {
@@ -537,13 +535,11 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                 if (search.trim()) setIsSearchDropdownOpen(true);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setIsSearchDropdownOpen(false);
-                } else if (e.key === 'Enter') {
+                if (e.key === 'Escape' || e.key === 'Enter') {
                   setIsSearchDropdownOpen(false);
                 }
               }}
-              className="w-full pl-10 pr-9 py-2.5 text-xs sm:text-sm font-medium rounded-xl border-2 border-[#0B1F4B]/20 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/90 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#0B1F4B] dark:focus:border-[#F5A623] focus:ring-2 focus:ring-[#0B1F4B]/15 transition-all"
+              className="w-full min-h-[44px] pl-10 pr-9 py-2.5 text-xs sm:text-sm font-medium rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#0B1F4B] focus:ring-2 focus:ring-[#0B1F4B]/20 transition-all"
             />
             {search && (
               <button
@@ -553,25 +549,25 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   setIsSearchDropdownOpen(false);
                   searchInputRef.current?.focus();
                 }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
                 title="Clear search"
               >
                 <X className="w-4 h-4" />
               </button>
             )}
 
-            {/* Instant Search Dropdown (First 8 Matches + "See all results") */}
+            {/* Instant Search Dropdown */}
             {isSearchDropdownOpen && debouncedSearch.trim().length > 0 && (
-              <div className="absolute left-0 right-0 mt-1.5 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-2.5 z-40 max-h-96 overflow-y-auto space-y-1.5">
-                <div className="flex items-center justify-between px-2.5 py-1 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <div className="absolute left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-xl border border-slate-200 p-2.5 z-40 max-h-96 overflow-y-auto space-y-1.5">
+                <div className="flex items-center justify-between px-2.5 py-1 border-b border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                     Matching Companies ({filteredClients.length})
                   </span>
                   {filteredClients.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setIsSearchDropdownOpen(false)}
-                      className="text-[11px] font-bold text-blue-600 dark:text-amber-400 hover:underline cursor-pointer"
+                      className="text-[11px] font-bold text-[#0B1F4B] hover:underline cursor-pointer"
                     >
                       See all results ({filteredClients.length})
                     </button>
@@ -594,11 +590,11 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                               setActiveProfileClient(cl);
                               setIsSearchDropdownOpen(false);
                             }}
-                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-start justify-between gap-3 text-xs transition-colors cursor-pointer"
+                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 flex items-start justify-between gap-3 text-xs transition-colors cursor-pointer"
                           >
                             <div className="min-w-0 flex-1 space-y-0.5">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-extrabold text-slate-900 dark:text-white truncate">
+                                <span className="font-extrabold text-slate-900 truncate">
                                   <HighlightMatch text={cl.name} query={debouncedSearch} />
                                 </span>
                                 <span
@@ -608,7 +604,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                   {badge.label}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-500 truncate">
+                              <p className="text-[11px] text-slate-600 truncate">
                                 <HighlightMatch text={cl.city} query={debouncedSearch} /> •{' '}
                                 <HighlightMatch text={cl.industry} query={debouncedSearch} /> • Contact:{' '}
                                 <HighlightMatch
@@ -623,7 +619,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                 ) : null}
                               </p>
                               {latestRem && (
-                                <p className="text-[11px] text-slate-400 truncate">
+                                <p className="text-[11px] text-slate-500 truncate">
                                   Latest remark:{' '}
                                   <HighlightMatch text={latestRem} query={debouncedSearch} />
                                 </p>
@@ -639,15 +635,15 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsSearchDropdownOpen(false)}
-                        className="w-full py-2 text-center text-xs font-bold text-blue-600 dark:text-amber-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl transition-colors cursor-pointer"
+                        className="w-full py-2 text-center text-xs font-bold text-[#0B1F4B] hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
                       >
                         See all results ({filteredClients.length} companies)
                       </button>
                     )}
                   </>
                 ) : (
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-3 text-xs">
-                    <span className="text-slate-500 font-medium">
+                  <div className="p-3 rounded-xl bg-slate-50 flex items-center justify-between gap-3 text-xs">
+                    <span className="text-slate-600 font-medium">
                       No company found for "{debouncedSearch.trim()}"
                     </span>
                     {canManageClients && (
@@ -659,7 +655,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                           setAddClientInitialName(search.trim());
                           setIsFormModalOpen(true);
                         }}
-                        className="px-3 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer"
+                        className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5 text-[#F5A623]" />
                         <span>Add this company</span>
@@ -675,7 +671,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
             <select
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
-              className="px-3 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+              className="min-h-[44px] px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 bg-white text-slate-900 flex-1 md:flex-none focus:outline-none"
             >
               <option value="All">All Cities</option>
               {cities.map((ct) => (
@@ -688,7 +684,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
             <select
               value={selectedIndustry}
               onChange={(e) => setSelectedIndustry(e.target.value)}
-              className="px-3 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
+              className="min-h-[44px] px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 bg-white text-slate-900 flex-1 md:flex-none focus:outline-none"
             >
               <option value="All">All Industries</option>
               {industries.map((ind) => (
@@ -700,19 +696,19 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
           </div>
         </div>
 
-        {/* Quick Filter Chips: All, Green, Blue, Red, Overdue Follow-up, and Clear */}
+        {/* Quick Filter Chips */}
         <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1">
               Quick Filters:
             </span>
             <button
               type="button"
               onClick={() => setSelectedSectionChip('All')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
+              className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
                 selectedSectionChip === 'All'
                   ? 'bg-[#0B1F4B] text-white border-[#0B1F4B]'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
               }`}
             >
               All ({visibleClients.length})
@@ -720,56 +716,59 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
 
             <button
               type="button"
-              onClick={() =>
-                setSelectedSectionChip((prev) => (prev === 'Green' ? 'All' : 'Green'))
-              }
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
+              onClick={() => {
+                setSelectedSectionChip((prev) => (prev === 'Green' ? 'All' : 'Green'));
+                setMobileActiveSection('Green');
+              }}
+              className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
                 selectedSectionChip === 'Green'
                   ? 'bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100/70'
+                  : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <span>Green ({totalSectionCounts.Green})</span>
             </button>
 
             <button
               type="button"
-              onClick={() =>
-                setSelectedSectionChip((prev) => (prev === 'Blue' ? 'All' : 'Blue'))
-              }
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
+              onClick={() => {
+                setSelectedSectionChip((prev) => (prev === 'Blue' ? 'All' : 'Blue'));
+                setMobileActiveSection('Blue');
+              }}
+              className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
                 selectedSectionChip === 'Blue'
                   ? 'bg-blue-700 text-white border-blue-700'
-                  : 'bg-blue-50/70 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100/70'
+                  : 'bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
               <span>Blue ({totalSectionCounts.Blue})</span>
             </button>
 
             <button
               type="button"
-              onClick={() =>
-                setSelectedSectionChip((prev) => (prev === 'Red' ? 'All' : 'Red'))
-              }
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
+              onClick={() => {
+                setSelectedSectionChip((prev) => (prev === 'Red' ? 'All' : 'Red'));
+                setMobileActiveSection('Red');
+              }}
+              className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
                 selectedSectionChip === 'Red'
                   ? 'bg-rose-700 text-white border-rose-700'
-                  : 'bg-rose-50/70 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100/70'
+                  : 'bg-rose-50 text-rose-900 border-rose-200 hover:bg-rose-100'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-rose-400" />
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
               <span>Red ({totalSectionCounts.Red})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setOnlyOverdueFollowUp((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
+              className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
                 onlyOverdueFollowUp
                   ? 'bg-rose-600 text-white border-rose-600'
-                  : 'bg-amber-50/70 dark:bg-amber-950/30 text-amber-900 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100/70'
+                  : 'bg-amber-50 text-amber-950 border-amber-200 hover:bg-amber-100'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
@@ -781,7 +780,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
             <button
               type="button"
               onClick={handleClearAllFilters}
-              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
               <span>Clear</span>
@@ -789,8 +788,8 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
           )}
         </div>
 
-        {/* Three Section Summary Counts */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Desktop Three Section Summary Counts */}
+        <div className="hidden lg:grid lg:grid-cols-3 gap-3">
           {SECTION_CONFIG.map((cfg) => {
             const matchedCount = clientsBySection[cfg.section].length;
             const totalCount = totalSectionCounts[cfg.section];
@@ -804,7 +803,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                 }
                 className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
                   cfg.summaryCardClass
-                } ${selectedSectionChip === cfg.section ? 'ring-2 ring-[#0B1F4B] dark:ring-[#F5A623]' : ''}`}
+                } ${selectedSectionChip === cfg.section ? 'ring-2 ring-[#0B1F4B]' : ''}`}
               >
                 <div>
                   <div className="flex items-center gap-2">
@@ -813,7 +812,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                       {cfg.title}
                     </span>
                   </div>
-                  <p className="text-[11px] opacity-80 mt-0.5">{cfg.subtitle}</p>
+                  <p className="text-[11px] opacity-85 mt-0.5">{cfg.subtitle}</p>
                 </div>
                 <span className="text-xl font-black">
                   {hasActiveFilters ? `${matchedCount} of ${totalCount}` : totalCount}
@@ -824,49 +823,92 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
         </div>
       </div>
 
+      {/* MOBILE / TABLET (<1024px) Sticky 3-Tab Section Switcher */}
+      <div className="lg:hidden sticky top-14 sm:top-16 z-20 bg-white/95 backdrop-blur-xs p-1.5 rounded-xl border border-slate-200 shadow-xs grid grid-cols-3 gap-1.5">
+        {SECTION_CONFIG.map((cfg) => {
+          const isCurrentTab =
+            selectedSectionChip !== 'All'
+              ? selectedSectionChip === cfg.section
+              : mobileActiveSection === cfg.section;
+          const count = clientsBySection[cfg.section].length;
+
+          return (
+            <button
+              key={cfg.section}
+              type="button"
+              onClick={() => {
+                setMobileActiveSection(cfg.section);
+                if (selectedSectionChip !== 'All' && selectedSectionChip !== cfg.section) {
+                  setSelectedSectionChip('All');
+                }
+              }}
+              className={`min-h-[42px] px-2 py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                isCurrentTab
+                  ? `${cfg.headerBg} shadow-xs`
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  isCurrentTab ? 'bg-white' : cfg.dotClass
+                }`}
+              />
+              <span className="truncate">{cfg.shortTitle}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                  isCurrentTab ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-800'
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* 30-Day Trash Drawer (Admin Only) */}
       {isAdmin && showTrash && (
-        <div className="p-4 rounded-2xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 space-y-3">
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-extrabold text-rose-900 dark:text-rose-200 flex items-center gap-2">
-                <Trash2 className="w-4 h-4 text-rose-600" />
+              <h3 className="text-sm font-extrabold text-rose-950 flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-rose-700" />
                 <span>Deleted Companies Trash (Retained for 30 Days)</span>
               </h3>
-              <p className="text-[11px] text-rose-700 dark:text-rose-300">
+              <p className="text-[11px] text-rose-800">
                 Admin can restore any deleted company back to its section within 30 days.
               </p>
             </div>
           </div>
 
           {trashClients.length === 0 ? (
-            <p className="text-xs text-slate-500 py-4 text-center">Trash is empty.</p>
+            <p className="text-xs text-slate-600 py-4 text-center">Trash is empty.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {trashClients.map((tc) => (
                 <div
                   key={tc.id}
-                  className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 flex items-start justify-between gap-3 text-xs"
+                  className="p-3.5 rounded-xl bg-white border border-rose-200 flex items-start justify-between gap-3 text-xs"
                 >
                   <div className="space-y-1 min-w-0">
-                    <p className="font-bold text-slate-900 dark:text-white truncate">{tc.name}</p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="font-bold text-slate-900 truncate">{tc.name}</p>
+                    <p className="text-[11px] text-slate-600">
                       {tc.industry} • {tc.city}
                     </p>
                     {tc.deleteReason && (
-                      <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                      <p className="text-[11px] text-rose-700 font-medium">
                         Reason: {tc.deleteReason}
                       </p>
                     )}
-                    <p className="text-[10px] text-slate-400">
+                    <p className="text-[10px] text-slate-500">
                       Deleted on {formatIndianDate(tc.deletedAt)}
                     </p>
                   </div>
                   <button
                     onClick={() => restoreClient(tc.id)}
-                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                    className="min-h-[36px] px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer"
                   >
-                    <RotateCcw className="w-3 h-3" />
+                    <RotateCcw className="w-3.5 h-3.5" />
                     <span>Restore</span>
                   </button>
                 </div>
@@ -878,11 +920,11 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
 
       {/* Global Empty State when no company matches search */}
       {filteredClients.length === 0 && debouncedSearch.trim().length > 0 && (
-        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-3 shadow-xs">
-          <p className="text-sm font-extrabold text-slate-800 dark:text-slate-200">
+        <div className="p-6 rounded-2xl bg-white border border-slate-200 text-center space-y-3 shadow-2xs">
+          <p className="text-sm font-extrabold text-slate-900">
             No company found for "{debouncedSearch.trim()}"
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-600">
             We checked company names, industries, cities, addresses, websites, contacts, and remarks.
           </p>
           <div className="flex items-center justify-center gap-2 pt-1">
@@ -894,7 +936,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   setAddClientInitialName(search.trim());
                   setIsFormModalOpen(true);
                 }}
-                className="px-4 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                className="min-h-[42px] px-4 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4 text-[#F5A623]" />
                 <span>Add this company</span>
@@ -903,7 +945,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
             <button
               type="button"
               onClick={handleClearAllFilters}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
+              className="min-h-[42px] px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer"
             >
               Clear Search
             </button>
@@ -911,12 +953,15 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
         </div>
       )}
 
-      {/* Three Colour-Coded Sections */}
+      {/* Three Colour-Coded Sections (1 active section on <1024px, all 3 columns side-by-side on >=1024px) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         {SECTION_CONFIG.map((cfg) => {
           const sectionClients = clientsBySection[cfg.section];
           const totalInSec = totalSectionCounts[cfg.section];
           const isDropTarget = canManageClients && dragOverSection === cfg.section;
+          const activeMobileSec =
+            selectedSectionChip !== 'All' ? selectedSectionChip : mobileActiveSection;
+          const isVisibleOnMobile = activeMobileSec === cfg.section;
 
           return (
             <div
@@ -942,29 +987,29 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   openMoveModal(found, cfg.section);
                 }
               }}
-              className={`rounded-2xl border bg-slate-50/70 dark:bg-slate-900/50 overflow-hidden transition-all ${
+              className={`${
+                isVisibleOnMobile ? 'block' : 'hidden lg:block'
+              } rounded-2xl border bg-slate-50 overflow-hidden transition-all ${
                 cfg.borderClass
               } ${isDropTarget ? 'ring-2 ring-[#F5A623] scale-[1.005]' : ''}`}
             >
               {/* Coloured Section Header */}
               <div className={`px-4 py-3.5 ${cfg.headerBg} flex items-center justify-between gap-2`}>
                 <div>
-                  <h3 className="text-sm font-extrabold tracking-wide flex items-center gap-2">
+                  <h3 className="text-sm font-extrabold tracking-wide flex items-center gap-2 text-white">
                     <span>{cfg.title}</span>
                   </h3>
-                  <p className="text-[11px] text-white/85 mt-0.5">{cfg.subtitle}</p>
+                  <p className="text-[11px] text-white/90 mt-0.5">{cfg.subtitle}</p>
                 </div>
                 <span className="px-2.5 py-1 rounded-lg bg-white/20 text-white font-black text-xs whitespace-nowrap">
-                  {hasActiveFilters
-                    ? `${cfg.section} ${sectionClients.length} of ${totalInSec}`
-                    : `${cfg.section} ${sectionClients.length} of ${totalInSec}`}
+                  {`${cfg.section} ${sectionClients.length} of ${totalInSec}`}
                 </span>
               </div>
 
               {/* Cards List inside Section */}
-              <div className="p-3.5 space-y-3 min-h-[220px]">
+              <div className="p-3 sm:p-3.5 space-y-3 min-h-[220px]">
                 {sectionClients.length === 0 ? (
-                  <div className="py-10 text-center text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+                  <div className="py-10 text-center text-xs text-slate-500 border border-dashed border-slate-300 bg-white rounded-xl">
                     No companies in {cfg.title}.
                   </div>
                 ) : (
@@ -998,35 +1043,35 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                           setDraggedClientId(null);
                           setDragOverSection(null);
                         }}
-                        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs hover:border-[#0B1F4B] dark:hover:border-amber-500 transition-all space-y-3"
+                        className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs hover:border-[#0B1F4B] transition-all space-y-3"
                       >
                         {/* Company Name, Industry, City */}
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <h4
                               onClick={() => setActiveProfileClient(client)}
-                              className="font-extrabold text-sm text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-amber-400 cursor-pointer truncate"
+                              className="font-extrabold text-sm text-slate-900 hover:text-[#0B1F4B] hover:underline cursor-pointer truncate"
                               title={client.name}
                             >
                               <HighlightMatch text={client.name} query={debouncedSearch} />
                             </h4>
-                            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            <p className="text-[11px] text-slate-600 truncate mt-0.5">
                               <HighlightMatch text={client.industry} query={debouncedSearch} />
                             </p>
                           </div>
-                          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-semibold flex items-center gap-1 shrink-0">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 text-[11px] font-semibold flex items-center gap-1 shrink-0">
                             <MapPin className="w-3 h-3 text-[#F5A623]" />
                             <HighlightMatch text={client.city} query={debouncedSearch} />
                           </span>
                         </div>
 
                         {/* Main Contact Person & Phone */}
-                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 text-xs flex items-center justify-between gap-2">
+                        <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">
                               Main Contact
                             </span>
-                            <p className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                            <p className="font-bold text-slate-900 truncate">
                               <HighlightMatch
                                 text={mainContact?.name || '-'}
                                 query={debouncedSearch}
@@ -1034,24 +1079,31 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                             </p>
                           </div>
                           <div className="text-right shrink-0">
-                            <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                              <Phone className="w-3 h-3 text-[#F5A623]" />
-                              <HighlightMatch
-                                text={mainContact?.phone || '-'}
-                                query={debouncedSearch}
-                              />
-                            </span>
+                            {mainContact?.phone ? (
+                              <a
+                                href={`tel:${mainContact.phone}`}
+                                className="min-h-[32px] px-2 py-1 rounded-md bg-white border border-slate-200 text-xs font-bold text-[#0B1F4B] hover:underline flex items-center gap-1"
+                              >
+                                <Phone className="w-3 h-3 text-[#F5A623]" />
+                                <HighlightMatch
+                                  text={mainContact.phone}
+                                  query={debouncedSearch}
+                                />
+                              </a>
+                            ) : (
+                              <span className="text-xs text-slate-500">-</span>
+                            )}
                           </div>
                         </div>
 
                         {/* Key Date for Section & Next Follow-up Date */}
                         <div className="grid grid-cols-2 gap-2 text-[11px]">
-                          <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                            <span className="text-[10px] text-slate-400 font-bold block">
+                          <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                            <span className="text-[10px] text-slate-500 font-bold block">
                               {cfg.keyDateLabel}
                             </span>
-                            <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1 mt-0.5">
-                              <Calendar className="w-3 h-3 text-slate-400" />
+                            <span className="font-bold text-slate-900 flex items-center gap-1 mt-0.5">
+                              <Calendar className="w-3 h-3 text-slate-500" />
                               {formatIndianDate(keyDateValue)}
                             </span>
                           </div>
@@ -1059,18 +1111,16 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                           <div
                             className={`p-2 rounded-lg border ${
                               isOverdue
-                                ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800'
-                                : 'bg-slate-50/80 dark:bg-slate-800/40 border-slate-100 dark:border-slate-800'
+                                ? 'bg-rose-50 border-rose-200'
+                                : 'bg-slate-50 border-slate-200'
                             }`}
                           >
-                            <span className="text-[10px] text-slate-400 font-bold block">
+                            <span className="text-[10px] text-slate-500 font-bold block">
                               Next Follow-up
                             </span>
                             <span
                               className={`font-bold flex items-center gap-1 mt-0.5 ${
-                                isOverdue
-                                  ? 'text-rose-600 dark:text-rose-400'
-                                  : 'text-slate-800 dark:text-slate-200'
+                                isOverdue ? 'text-rose-700' : 'text-slate-900'
                               }`}
                             >
                               <Clock className="w-3 h-3 shrink-0" />
@@ -1082,9 +1132,9 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                         </div>
 
                         {/* Company JD / Hiring Requirements (with Expand & Quick Edit JD) */}
-                        <div className="p-2.5 rounded-lg bg-blue-50/50 dark:bg-slate-800/70 border border-blue-200/70 dark:border-slate-700 text-[11px] space-y-1.5">
+                        <div className="p-2.5 rounded-lg bg-blue-50/60 border border-blue-200 text-[11px] space-y-1.5">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] uppercase font-extrabold text-[#0B1F4B] dark:text-amber-400 flex items-center gap-1">
+                            <span className="text-[10px] uppercase font-extrabold text-[#0B1F4B] flex items-center gap-1">
                               <Briefcase className="w-3 h-3 text-[#F5A623]" />
                               Company JD / Hiring Requirement
                             </span>
@@ -1098,7 +1148,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                       [client.id]: !prev[client.id],
                                     }))
                                   }
-                                  className="text-[10px] font-bold text-blue-600 dark:text-amber-400 hover:underline cursor-pointer"
+                                  className="min-h-[28px] px-1.5 text-[10px] font-bold text-[#0B1F4B] hover:underline cursor-pointer"
                                 >
                                   {expandedJdClientIds[client.id] ? 'Hide JD' : 'Full JD'}
                                 </button>
@@ -1107,7 +1157,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => openQuickEditJdModal(client)}
-                                  className="px-1.5 py-0.5 rounded bg-[#0B1F4B] hover:bg-[#163270] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                  className="min-h-[28px] px-2 py-0.5 rounded bg-[#0B1F4B] hover:bg-[#163270] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
                                   title="Edit Company JD"
                                 >
                                   <Edit className="w-2.5 h-2.5 text-[#F5A623]" />
@@ -1119,7 +1169,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
 
                           {client.agreementDetails ? (
                             expandedJdClientIds[client.id] ? (
-                              <div className="space-y-1 pt-0.5 text-slate-700 dark:text-slate-200">
+                              <div className="space-y-1 pt-0.5 text-slate-800">
                                 {client.agreementDetails
                                   .split(/\||\n/)
                                   .map((s) => s.trim())
@@ -1142,7 +1192,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                   }))
                                 }
                                 title={client.agreementDetails}
-                                className="text-slate-700 dark:text-slate-300 line-clamp-2 font-medium cursor-pointer"
+                                className="text-slate-800 line-clamp-2 font-medium cursor-pointer"
                               >
                                 <HighlightMatch
                                   text={client.agreementDetails}
@@ -1151,19 +1201,19 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                               </p>
                             )
                           ) : (
-                            <p className="text-slate-400 italic">
+                            <p className="text-slate-500 italic">
                               No JD added yet.{' '}
                               {canManageClients ? 'Click "Edit JD" to add requirements.' : ''}
                             </p>
                           )}
                         </div>
 
-                        {/* Latest Remark (Truncated, full text on hover) */}
+                        {/* Latest Remark */}
                         <div
                           title={latestRemark || 'No remarks logged yet'}
-                          className="p-2.5 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 text-[11px]"
+                          className="p-2.5 rounded-lg bg-amber-50/70 border border-amber-200 text-[11px]"
                         >
-                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-0.5">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 mb-0.5">
                             <span className="flex items-center gap-1">
                               <MessageSquare className="w-3 h-3 text-[#F5A623]" />
                               Latest Remark
@@ -1172,7 +1222,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                               <span>{formatIndianDate(sortedRemarks[0].createdAt)}</span>
                             )}
                           </div>
-                          <p className="text-slate-700 dark:text-slate-300 truncate font-medium">
+                          <p className="text-slate-800 truncate font-medium">
                             {latestRemark ? (
                               <HighlightMatch text={latestRemark} query={debouncedSearch} />
                             ) : (
@@ -1182,23 +1232,23 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                         </div>
 
                         {/* Card Footer Actions */}
-                        <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-200 flex-wrap">
                           <button
                             onClick={() => setActiveProfileClient(client)}
-                            className="px-2.5 py-1 rounded-lg bg-[#0B1F4B]/10 hover:bg-[#0B1F4B]/20 text-[#0B1F4B] dark:bg-blue-900/40 dark:text-blue-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                            className="min-h-[38px] px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#0B1F4B] border border-blue-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <span>View Profile</span>
-                            <ChevronRight className="w-3 h-3" />
+                            <ChevronRight className="w-3.5 h-3.5" />
                           </button>
 
                           <div className="flex items-center gap-1">
                             {canCreateTasks && (
                               <button
                                 onClick={() => setReminderClient(client)}
-                                className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 cursor-pointer"
+                                className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg text-amber-700 hover:bg-amber-50 border border-slate-200 flex items-center justify-center cursor-pointer"
                                 title="Set Follow-up Reminder"
                               >
-                                <Bell className="w-3.5 h-3.5" />
+                                <Bell className="w-4 h-4" />
                               </button>
                             )}
 
@@ -1210,19 +1260,19 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                     setQuickRemarkText('');
                                     setQuickRemarkError('');
                                   }}
-                                  className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
+                                  className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg text-[#0B1F4B] hover:bg-blue-50 border border-slate-200 flex items-center justify-center cursor-pointer"
                                   title="Add Remark"
                                 >
-                                  <MessageSquarePlus className="w-3.5 h-3.5" />
+                                  <MessageSquarePlus className="w-4 h-4" />
                                 </button>
 
                                 <button
                                   onClick={() => openMoveModal(client)}
-                                  className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                  className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-900 text-xs font-bold flex items-center gap-1 cursor-pointer"
                                   title="Move to another section"
                                 >
-                                  <ArrowRightLeft className="w-3 h-3 text-[#F5A623]" />
-                                  <span>Move to</span>
+                                  <ArrowRightLeft className="w-3.5 h-3.5 text-[#F5A623]" />
+                                  <span>Move</span>
                                 </button>
 
                                 <button
@@ -1230,10 +1280,10 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                     setClientToEdit(client);
                                     setIsFormModalOpen(true);
                                   }}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                  className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer"
                                   title="Edit Company"
                                 >
-                                  <Edit className="w-3.5 h-3.5" />
+                                  <Edit className="w-4 h-4" />
                                 </button>
                               </>
                             )}
@@ -1241,10 +1291,10 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                             {isAdmin && (
                               <button
                                 onClick={() => openDeleteModal(client)}
-                                className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-slate-200 flex items-center justify-center cursor-pointer"
                                 title="Delete Company"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             )}
                           </div>
@@ -1259,7 +1309,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
         })}
       </div>
 
-      {/* Move Between Sections Dialog (Admin, Manager, HR Executive) */}
+      {/* Move Between Sections Dialog */}
       {canManageClients && moveDialog && (
         <Modal
           isOpen={!!moveDialog}
@@ -1267,10 +1317,29 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
           title={`Move "${moveDialog.client.name}" to Another Section`}
           subtitle={`Current Section: ${CLIENT_SECTION_LABELS[getClientSection(moveDialog.client)]}`}
           maxWidth="lg"
+          footer={
+            <div className="flex items-center justify-end gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => setMoveDialog(null)}
+                className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="move-client-section-form"
+                disabled={isMoving}
+                className="min-h-[44px] px-5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {isMoving ? 'Moving...' : `Confirm Move to ${CLIENT_SECTION_LABELS[moveDialog.targetSection]}`}
+              </button>
+            </div>
+          }
         >
-          <form onSubmit={handleConfirmMove} className="space-y-4 text-xs">
+          <form id="move-client-section-form" onSubmit={handleConfirmMove} className="space-y-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+              <label className="font-bold text-slate-700 block mb-1.5">
                 Select Target Section *
               </label>
               <div className="grid grid-cols-3 gap-2">
@@ -1283,8 +1352,8 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                       onClick={() => handleTargetSectionChange(cfg.section)}
                       className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                         selected
-                          ? `${cfg.headerBg} border-transparent shadow-sm`
-                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                          ? `${cfg.headerBg} border-transparent shadow-xs`
+                          : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
                       }`}
                     >
                       <span className="font-extrabold block">{cfg.section.toUpperCase()}</span>
@@ -1295,9 +1364,8 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
               </div>
             </div>
 
-            {/* Required Date for Target Section */}
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 {moveDialog.targetSection === 'Green'
                   ? 'Agreement Signed Date * (Required for Active Clients)'
                   : moveDialog.targetSection === 'Blue'
@@ -1312,17 +1380,16 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   setMoveDate(e.target.value);
                   setMoveError('');
                 }}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full min-h-[44px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
               />
             </div>
 
-            {/* Required Remark */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">
+                <label className="font-bold text-slate-700">
                   Remark for Moving Section * (Required, 3–500 chars)
                 </label>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] font-mono text-slate-500">
                   {moveRemark.trim().length}/500
                 </span>
               </div>
@@ -1335,33 +1402,16 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   setMoveRemark(e.target.value);
                   setMoveError('');
                 }}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
               />
             </div>
 
             {moveError && (
-              <p className="text-[11px] text-rose-600 font-semibold flex items-center gap-1">
+              <p className="text-xs text-rose-700 font-semibold flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 <span>{moveError}</span>
               </p>
             )}
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setMoveDialog(null)}
-                className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isMoving}
-                className="px-5 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                {isMoving ? 'Moving...' : `Confirm Move to ${CLIENT_SECTION_LABELS[moveDialog.targetSection]}`}
-              </button>
-            </div>
           </form>
         </Modal>
       )}
@@ -1374,17 +1424,36 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
           title={`Move "${deleteTarget.name}" to Trash`}
           subtitle="Company will be held in Trash for 30 days and can be restored by Admin"
           maxWidth="md"
+          footer={
+            <div className="flex items-center justify-end gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="delete-client-form"
+                disabled={isDeleting}
+                className="min-h-[44px] px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? 'Moving to Trash...' : 'Move to Trash (30 Days)'}
+              </button>
+            </div>
+          }
         >
-          <form onSubmit={handleConfirmDelete} className="space-y-4 text-xs">
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
+          <form id="delete-client-form" onSubmit={handleConfirmDelete} className="space-y-4 text-xs">
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900">
               Please provide a mandatory reason for deleting this company. This reason will be permanently logged in the company's Remarks timeline.
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">
+                <label className="font-bold text-slate-700">
                   Reason for Deletion * (3–500 characters)
                 </label>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] font-mono text-slate-500">
                   {deleteReason.trim().length}/500
                 </span>
               </div>
@@ -1397,33 +1466,17 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   setDeleteReason(e.target.value);
                   setDeleteError('');
                 }}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
               />
               {deleteError && (
-                <p className="text-[11px] text-rose-600 font-semibold mt-1">{deleteError}</p>
+                <p className="text-xs text-rose-700 font-semibold mt-1">{deleteError}</p>
               )}
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isDeleting}
-                className="px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                {isDeleting ? 'Moving to Trash...' : 'Move to Trash (30 Days)'}
-              </button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* Quick Add Remark Modal (Admin, Manager, HR Executive) */}
+      {/* Quick Add Remark Modal */}
       {canManageClients && remarkTarget && (
         <Modal
           isOpen={!!remarkTarget}
@@ -1431,14 +1484,33 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
           title={`Add Remark — ${remarkTarget.name}`}
           subtitle={`Section: ${CLIENT_SECTION_LABELS[getClientSection(remarkTarget)]}`}
           maxWidth="md"
+          footer={
+            <div className="flex items-center justify-end gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => setRemarkTarget(null)}
+                className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="quick-client-remark-form"
+                disabled={isSavingQuickRemark}
+                className="min-h-[44px] px-5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {isSavingQuickRemark ? 'Saving...' : 'Save Remark'}
+              </button>
+            </div>
+          }
         >
-          <form onSubmit={handleSaveQuickRemark} className="space-y-4 text-xs">
+          <form id="quick-client-remark-form" onSubmit={handleSaveQuickRemark} className="space-y-4 text-xs">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">
+                <label className="font-bold text-slate-700">
                   Remark Text * (3–500 characters, permanent)
                 </label>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] font-mono text-slate-500">
                   {quickRemarkText.trim().length}/500
                 </span>
               </div>
@@ -1451,33 +1523,17 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   setQuickRemarkText(e.target.value);
                   setQuickRemarkError('');
                 }}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
               />
               {quickRemarkError && (
-                <p className="text-[11px] text-rose-600 font-semibold mt-1">{quickRemarkError}</p>
+                <p className="text-xs text-rose-700 font-semibold mt-1">{quickRemarkError}</p>
               )}
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setRemarkTarget(null)}
-                className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSavingQuickRemark}
-                className="px-5 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                {isSavingQuickRemark ? 'Saving...' : 'Save Remark'}
-              </button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* Quick Edit Company JD Modal (Admin, Manager, HR Executive) */}
+      {/* Quick Edit Company JD Modal */}
       {canManageClients && jdEditTarget && (
         <Modal
           isOpen={!!jdEditTarget}
@@ -1485,10 +1541,28 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
           title={`Edit Company JD — ${jdEditTarget.name}`}
           subtitle="Update Job Description, Role, Eligibility, Salary, Shift & Hiring Requirements"
           maxWidth="lg"
+          footer={
+            <div className="flex items-center justify-end gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => setJdEditTarget(null)}
+                className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="quick-edit-jd-form"
+                className="min-h-[44px] px-5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold shadow-sm cursor-pointer"
+              >
+                Save JD Changes
+              </button>
+            </div>
+          }
         >
-          <form onSubmit={handleSaveQuickJd} className="space-y-4 text-xs">
+          <form id="quick-edit-jd-form" onSubmit={handleSaveQuickJd} className="space-y-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 Company JD & Hiring Requirement Details *
               </label>
               <textarea
@@ -1499,15 +1573,15 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   setJdEditText(e.target.value);
                   setJdEditError('');
                 }}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
               />
-              <span className="text-[10px] text-slate-400 mt-1 block">
+              <span className="text-[10px] text-slate-500 mt-1 block">
                 Tip: Separate key points with "|" or new lines for clean bullet points on the card and profile.
               </span>
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 Reason for Editing JD * (Minimum 10 characters — logged in Edit History)
               </label>
               <input
@@ -1518,29 +1592,13 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                   setJdEditReason(e.target.value);
                   setJdEditError('');
                 }}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+                className="w-full min-h-[44px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
               />
             </div>
 
             {jdEditError && (
-              <p className="text-[11px] text-rose-600 font-semibold">{jdEditError}</p>
+              <p className="text-xs text-rose-700 font-semibold">{jdEditError}</p>
             )}
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setJdEditTarget(null)}
-                className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold shadow-sm cursor-pointer"
-              >
-                Save JD Changes
-              </button>
-            </div>
           </form>
         </Modal>
       )}
@@ -1567,7 +1625,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
         }}
       />
 
-      {/* Client Form Modal (Admin, Manager, HR Executive) */}
+      {/* Client Form Modal */}
       <ClientFormModal
         isOpen={isFormModalOpen}
         onClose={() => {
@@ -1585,7 +1643,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
         }}
       />
 
-      {/* Excel/CSV Ingestion Wizard Modal (Admin, Manager, HR Executive) */}
+      {/* Excel/CSV Ingestion Wizard Modal */}
       {canManageClients && (
         <ExcelCsvImportModal
           isOpen={isImportModalOpen}

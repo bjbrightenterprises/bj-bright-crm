@@ -9,26 +9,15 @@ import {
   Phone,
   Mail,
   MapPin,
-  Briefcase,
   Share2,
-  FileText,
   ChevronLeft,
   ChevronRight,
   Eye,
   Trash2,
-  CheckCircle,
-  Clock,
-  Sparkles,
   Bell,
-  UserCheck,
-  CheckSquare,
-  Square,
-  Shield,
-  Layers,
 } from 'lucide-react';
 import { Candidate, CandidateStatus } from '../../types/crm';
 import { useCRM } from '../../context/CRMContext';
-import { Badge } from '../common/Badge';
 import { CandidateProfileModal } from './CandidateProfileModal';
 import { CandidateFormModal } from './CandidateFormModal';
 import { ExcelCsvImportModal } from '../common/ExcelCsvImportModal';
@@ -46,7 +35,6 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
   const {
     visibleCandidates,
     deleteCandidate,
-    updateCandidate,
     bulkUpdateCandidateStatus,
     bulkAssignRecruiter,
     bulkDeleteCandidates,
@@ -55,7 +43,6 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     canCreateTasks,
     openStatusRemarkModal,
   } = useCRM();
-
 
   // Filters
   const [search, setSearch] = useState('');
@@ -93,7 +80,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     'Interview Scheduled',
     'Selected',
     'Offered',
-    'Joined',
+    'Placed',
     'Rejected',
     'On Hold',
   ];
@@ -101,14 +88,22 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
   // Unique cities in data
   const uniqueCities = useMemo(() => {
     const set = new Set<string>();
-    visibleCandidates.forEach((c) => set.add(c.city.split(' ')[0]));
+    visibleCandidates.forEach((c) => {
+      if (c.city) set.add(c.city.split(' ')[0]);
+    });
     return Array.from(set);
   }, [visibleCandidates]);
+
+  const activeFilterCount =
+    (selectedSource !== 'All' ? 1 : 0) +
+    (selectedCity !== 'All' ? 1 : 0) +
+    (selectedSkill !== 'All' ? 1 : 0) +
+    (maxExpectedSalary < 50 ? 1 : 0) +
+    (minExp > 0 ? 1 : 0);
 
   // Filtered Candidates
   const filteredCandidates = useMemo(() => {
     return visibleCandidates.filter((cand) => {
-      // Search
       const q = search.toLowerCase().trim();
       const matchesSearch =
         !q ||
@@ -120,28 +115,16 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         (cand.remarks && cand.remarks.some((r) => r.text.toLowerCase().includes(q)));
 
       if (!matchesSearch) return false;
-
-      // Status
       if (selectedStatus !== 'All' && cand.status !== selectedStatus) return false;
-
-      // Source
       if (selectedSource !== 'All' && cand.source !== selectedSource) return false;
-
-      // City
       if (selectedCity !== 'All' && !cand.city.toLowerCase().includes(selectedCity.toLowerCase()))
         return false;
-
-      // Skill
       if (
         selectedSkill !== 'All' &&
         !cand.skills.some((s) => s.toLowerCase() === selectedSkill.toLowerCase())
       )
         return false;
-
-      // Salary
       if (cand.expectedSalaryLPA > maxExpectedSalary) return false;
-
-      // Experience
       if (cand.experienceYears < minExp) return false;
 
       return true;
@@ -213,10 +196,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       ? visibleCandidates.filter((c) => selectedCandidateIds.includes(c.id))
       : filteredCandidates;
 
-    if (listToExport.length === 0) {
-      alert('No candidate records to export.');
-      return;
-    }
+    if (listToExport.length === 0) return;
 
     const headers = [
       'Full Name',
@@ -261,16 +241,23 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     document.body.removeChild(link);
   };
 
+  const getStatusSelectStyle = (status: CandidateStatus) => {
+    if (status === 'Placed') return 'bg-emerald-100 text-emerald-900 border-emerald-300';
+    if (status === 'Offered' || status === 'Selected') return 'bg-amber-100 text-amber-900 border-amber-300';
+    if (status === 'Rejected') return 'bg-rose-100 text-rose-900 border-rose-300';
+    return 'bg-blue-50 text-[#0B1F4B] border-blue-200';
+  };
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#F5A623]" />
-            Candidate Master Directory
+          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-2">
+            <Users className="w-5 h-5 text-[#F5A623] shrink-0" />
+            <span>Candidate Master Directory</span>
           </h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-600 mt-0.5">
             {filteredCandidates.length} candidate profiles available in active talent pool
           </p>
         </div>
@@ -278,18 +265,18 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setIsExcelImportOpen(true)}
-            className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            className="min-h-[42px] px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <Upload className="w-3.5 h-3.5 text-blue-600" />
-            <span>Import Excel / CSV</span>
+            <Upload className="w-3.5 h-3.5 text-[#0B1F4B]" />
+            <span>Import Excel</span>
           </button>
 
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            className="min-h-[42px] px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-white" />
-            <span>Export to Excel</span>
+            <span>Export Excel</span>
           </button>
 
           <button
@@ -297,7 +284,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
               setCandidateToEdit(null);
               setIsFormModalOpen(true);
             }}
-            className="px-4 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold shadow-md transition-colors flex items-center gap-1.5"
+            className="min-h-[42px] px-4 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Plus className="w-4 h-4 text-[#F5A623]" />
             <span>Add Candidate</span>
@@ -305,8 +292,8 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         </div>
       </div>
 
-      {/* Status Tabs Bar */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 border-b border-slate-200 dark:border-slate-800">
+      {/* Status Tabs Bar (Horizontal Scrollable) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 border-b border-slate-200">
         {statusTabs.map((tab) => {
           const isActive = selectedStatus === tab;
           const count =
@@ -321,18 +308,18 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                 setSelectedStatus(tab);
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+              className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
                 isActive
-                  ? 'bg-[#0B1F4B] text-white dark:bg-[#F5A623] dark:text-slate-950 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  ? 'bg-[#0B1F4B] text-white shadow-2xs'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
               }`}
             >
               <span>{tab}</span>
               <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
                   isActive
-                    ? 'bg-white/20 text-white dark:bg-slate-950 dark:text-amber-300'
-                    : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    ? 'bg-[#F5A623] text-slate-950'
+                    : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 {count}
@@ -343,49 +330,37 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
+      <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-slate-200 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              type="text"
+              type="search"
+              inputMode="search"
               placeholder="Search by candidate name, phone (+91), email, skills, or company..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition-colors ${
-                showAdvancedFilters
-                  ? 'bg-blue-50 border-blue-300 text-blue-900 dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50'
+              className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                showAdvancedFilters || activeFilterCount > 0
+                  ? 'bg-blue-50 border-[#0B1F4B] text-[#0B1F4B]'
+                  : 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
               }`}
             >
-              <Filter className="w-3.5 h-3.5 text-[#F5A623]" />
-              <span>Filters</span>
-              {(selectedSource !== 'All' ||
-                selectedCity !== 'All' ||
-                selectedSkill !== 'All' ||
-                maxExpectedSalary < 50 ||
-                minExp > 0) && (
-                <span className="w-2 h-2 rounded-full bg-[#F5A623]" />
-              )}
+              <Filter className="w-4 h-4 text-[#F5A623]" />
+              <span>Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
             </button>
 
-            {(search ||
-              selectedStatus !== 'All' ||
-              selectedSource !== 'All' ||
-              selectedCity !== 'All' ||
-              selectedSkill !== 'All' ||
-              maxExpectedSalary < 50 ||
-              minExp > 0) && (
+            {(search || selectedStatus !== 'All' || activeFilterCount > 0) && (
               <button
                 onClick={() => {
                   setSearch('');
@@ -397,7 +372,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                   setMinExp(0);
                   setCurrentPage(1);
                 }}
-                className="text-xs text-rose-600 hover:underline font-semibold"
+                className="min-h-[44px] px-3 text-xs text-rose-700 hover:underline font-bold cursor-pointer"
               >
                 Reset All
               </button>
@@ -407,16 +382,16 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
 
         {/* Advanced Filters Expandable Drawer */}
         {showAdvancedFilters && (
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+          <div className="pt-3 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
             <div>
-              <label className="font-bold text-slate-500 block mb-1">Source</label>
+              <label className="font-bold text-slate-700 block mb-1">Source</label>
               <select
                 value={selectedSource}
                 onChange={(e) => {
                   setSelectedSource(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                className="w-full min-h-[42px] px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
               >
                 <option value="All">All Sources</option>
                 {companySettings.availableSources.map((s) => (
@@ -428,14 +403,14 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             </div>
 
             <div>
-              <label className="font-bold text-slate-500 block mb-1">City</label>
+              <label className="font-bold text-slate-700 block mb-1">City</label>
               <select
                 value={selectedCity}
                 onChange={(e) => {
                   setSelectedCity(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                className="w-full min-h-[42px] px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
               >
                 <option value="All">All Cities</option>
                 {uniqueCities.map((city) => (
@@ -447,14 +422,14 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             </div>
 
             <div>
-              <label className="font-bold text-slate-500 block mb-1">Core Skill</label>
+              <label className="font-bold text-slate-700 block mb-1">Core Skill</label>
               <select
                 value={selectedSkill}
                 onChange={(e) => {
                   setSelectedSkill(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                className="w-full min-h-[42px] px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
               >
                 <option value="All">All Skills</option>
                 {companySettings.availableSkills.map((sk) => (
@@ -466,7 +441,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             </div>
 
             <div>
-              <label className="font-bold text-slate-500 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 Min Exp: {minExp} Years
               </label>
               <input
@@ -479,12 +454,12 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                   setMinExp(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="w-full accent-[#0B1F4B] dark:accent-[#F5A623]"
+                className="w-full accent-[#0B1F4B] mt-2"
               />
             </div>
 
             <div>
-              <label className="font-bold text-slate-500 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 Max Salary: ₹{maxExpectedSalary} LPA
               </label>
               <input
@@ -497,68 +472,66 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                   setMaxExpectedSalary(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="w-full accent-[#0B1F4B] dark:accent-[#F5A623]"
+                className="w-full accent-[#0B1F4B] mt-2"
               />
             </div>
           </div>
         )}
       </div>
 
-      {/* Floating Bulk Actions Bar (Phase 2 Requirement) */}
+      {/* Sticky Bulk Actions Bar */}
       {selectedCandidateIds.length > 0 && (
-        <div className="p-3 rounded-xl bg-[#0B1F4B] text-white flex flex-wrap items-center justify-between gap-3 shadow-xl animate-in fade-in slide-in-from-top duration-200 text-xs">
-          <div className="flex items-center gap-3">
-            <span className="w-7 h-7 rounded-lg bg-[#F5A623] text-slate-950 font-bold flex items-center justify-center">
+        <div className="sticky top-16 z-20 p-3 rounded-xl bg-[#0B1F4B] text-white flex flex-wrap items-center justify-between gap-3 shadow-lg text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="w-7 h-7 rounded-lg bg-[#F5A623] text-slate-950 font-extrabold flex items-center justify-center">
               {selectedCandidateIds.length}
             </span>
             <span className="font-bold">
-              {selectedCandidateIds.length} Candidates Selected
+              {selectedCandidateIds.length} Selected
             </span>
             <button
               onClick={() => setSelectedCandidateIds([])}
-              className="text-amber-300 hover:underline text-[11px]"
+              className="text-amber-300 hover:underline text-xs font-semibold cursor-pointer ml-1"
             >
-              Deselect All
+              Clear
             </button>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Bulk Change Status */}
-            <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-lg">
-              <span className="text-[11px] text-slate-300">Change Status:</span>
+            <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-lg">
+              <span className="text-[11px] text-slate-200 font-semibold">Status:</span>
               <select
                 value={bulkStatusToApply}
                 onChange={(e) => {
                   const val = e.target.value as CandidateStatus;
                   if (val) handleBulkStatusChange(val);
                 }}
-                className="bg-slate-900 text-white rounded px-2 py-1 text-xs border border-white/20 focus:outline-none"
+                className="bg-white text-slate-900 rounded px-2 py-1 text-xs font-semibold border border-slate-300 focus:outline-none"
               >
-                <option value="">Select Status...</option>
+                <option value="">Select...</option>
                 <option value="New">New</option>
                 <option value="Screened">Screened</option>
                 <option value="Shortlisted">Shortlisted</option>
                 <option value="Interview Scheduled">Interview</option>
                 <option value="Selected">Selected</option>
                 <option value="Offered">Offered</option>
-                <option value="Joined">Joined</option>
+                <option value="Placed">Placed</option>
                 <option value="Rejected">Rejected</option>
                 <option value="On Hold">On Hold</option>
               </select>
             </div>
 
-            {/* Bulk Assign Recruiter */}
-            <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-lg">
-              <span className="text-[11px] text-slate-300">Assign Recruiter:</span>
+            <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-lg">
+              <span className="text-[11px] text-slate-200 font-semibold">Assign:</span>
               <select
                 value={bulkRecruiterToApply}
                 onChange={(e) => {
                   const val = e.target.value;
                   if (val) handleBulkAssign(val);
                 }}
-                className="bg-slate-900 text-white rounded px-2 py-1 text-xs border border-white/20 focus:outline-none"
+                className="bg-white text-slate-900 rounded px-2 py-1 text-xs font-semibold border border-slate-300 focus:outline-none"
               >
-                <option value="">Select Recruiter...</option>
+                <option value="">Recruiter...</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.name} ({u.role})
@@ -567,19 +540,17 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
               </select>
             </div>
 
-            {/* Bulk Export Selected */}
             <button
               onClick={() => handleExportCSV(true)}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 transition-colors"
+              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export Selected</span>
+              <span>Export</span>
             </button>
 
-            {/* Bulk Delete */}
             <button
               onClick={handleBulkDelete}
-              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1 transition-colors"
+              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Delete</span>
@@ -588,36 +559,192 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         </div>
       )}
 
-      {/* Candidates Data Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+      {/* MOBILE VIEW (<768px): Stacked Candidate Cards */}
+      <div className="md:hidden space-y-3">
+        {paginatedCandidates.length === 0 ? (
+          <div className="bg-white rounded-xl p-8 text-center text-slate-500 text-xs border border-slate-200">
+            No candidates found matching the selected filter criteria.
+          </div>
+        ) : (
+          paginatedCandidates.map((cand) => {
+            const isSelected = selectedCandidateIds.includes(cand.id);
+            const cleanPhone = cand.phone.replace(/\D/g, '');
+            const whatsappUrl = `https://wa.me/${cleanPhone}?text=Hi%20${encodeURIComponent(
+              cand.fullName
+            )},%20this%20is%20from%20BJ%20Bright%20Enterprises%20Noida.`;
+
+            return (
+              <div
+                key={cand.id}
+                className={`bg-white rounded-xl border p-4 shadow-2xs space-y-3 transition-colors ${
+                  isSelected ? 'border-[#0B1F4B] bg-blue-50/20' : 'border-slate-200'
+                }`}
+              >
+                {/* Top row: Checkbox, Name, Status Dropdown */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectCandidate(cand.id)}
+                      className="mt-1 w-4 h-4 rounded border-slate-300 text-[#0B1F4B] accent-[#0B1F4B]"
+                    />
+                    <div className="min-w-0">
+                      <button
+                        onClick={() => setActiveProfileCandidate(cand)}
+                        className="font-extrabold text-sm text-slate-900 hover:text-[#0B1F4B] text-left truncate block"
+                      >
+                        {cand.fullName}
+                      </button>
+                      <p className="text-xs text-slate-600 truncate">
+                        {cand.currentCompany} • {cand.experienceYears} Yrs
+                      </p>
+                    </div>
+                  </div>
+
+                  <select
+                    value={cand.status}
+                    onChange={(e) => openStatusRemarkModal(cand, e.target.value as CandidateStatus)}
+                    className={`min-h-[34px] text-xs font-bold rounded-lg px-2 py-1 border shrink-0 ${getStatusSelectStyle(
+                      cand.status
+                    )}`}
+                  >
+                    <option value="New">New</option>
+                    <option value="Screened">Screened</option>
+                    <option value="Shortlisted">Shortlisted</option>
+                    <option value="Interview Scheduled">Interview</option>
+                    <option value="Selected">Selected</option>
+                    <option value="Offered">Offered</option>
+                    <option value="Placed">Placed</option>
+                    <option value="Rejected">Rejected</option>
+                    <option value="On Hold">On Hold</option>
+                  </select>
+                </div>
+
+                {/* Middle Info Grid */}
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-500 block">Expected / Cur CTC</span>
+                    <span className="font-bold text-slate-900">
+                      ₹{cand.expectedSalaryLPA}L <span className="text-slate-500 font-normal">(₹{cand.currentSalaryLPA}L)</span>
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-500 block">City & Source</span>
+                    <span className="font-semibold text-slate-800 truncate block">
+                      {cand.city} • {cand.source}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Skills & Latest Remark */}
+                {cand.skills.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {cand.skills.slice(0, 4).map((s) => (
+                      <span
+                        key={s}
+                        className="px-2 py-0.5 rounded-md text-[11px] bg-slate-100 text-slate-800 font-medium border border-slate-200"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {cand.remarks && cand.remarks.length > 0 && (
+                  <p className="text-xs text-slate-700 bg-amber-50/70 border border-amber-200 rounded-lg px-2.5 py-1.5 line-clamp-2">
+                    <span className="font-bold text-slate-900">Remark: </span>
+                    {cand.remarks[0].text}
+                  </p>
+                )}
+
+                {/* Bottom Action Bar (44px touch targets) */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200">
+                  <div className="flex items-center gap-1.5">
+                    <a
+                      href={`tel:${cand.phone}`}
+                      className="min-h-[40px] px-3 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#0B1F4B] border border-blue-200 font-bold text-xs flex items-center gap-1.5"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Call</span>
+                    </a>
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="min-h-[40px] px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs flex items-center gap-1.5"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>WhatsApp</span>
+                    </a>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    {canCreateTasks && (
+                      <button
+                        onClick={() => setReminderCandidate(cand)}
+                        className="w-10 h-10 rounded-lg text-amber-700 hover:bg-amber-50 border border-slate-200 flex items-center justify-center"
+                        title="Set Reminder"
+                      >
+                        <Bell className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setActiveProfileCandidate(cand)}
+                      className="min-h-[40px] px-3 rounded-lg bg-[#0B1F4B] text-white font-bold text-xs flex items-center gap-1"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-[#F5A623]" />
+                      <span>View</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Delete candidate ${cand.fullName}?`)) {
+                          deleteCandidate(cand.id);
+                        }
+                      }}
+                      className="w-10 h-10 rounded-lg text-rose-600 hover:bg-rose-50 border border-slate-200 flex items-center justify-center"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* TABLET & DESKTOP VIEW (>=768px): Table with Sticky First Column */}
+      <div className="hidden md:block bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[10px] font-bold">
-                <th className="py-3 px-3 w-8">
+              <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 uppercase tracking-wider text-[10px] font-extrabold">
+                <th className="py-3.5 px-3 w-8">
                   <input
                     type="checkbox"
                     checked={isAllPaginatedSelected}
                     onChange={toggleSelectAll}
-                    className="rounded border-slate-300 text-[#0B1F4B] focus:ring-0 cursor-pointer"
+                    className="w-4 h-4 rounded border-slate-300 text-[#0B1F4B] accent-[#0B1F4B] cursor-pointer"
                   />
                 </th>
-                <th className="py-3 px-4">Candidate & Exp</th>
-                <th className="py-3 px-4">Contact Info</th>
-                <th className="py-3 px-4">Current Org & City</th>
-                <th className="py-3 px-4">CTC (LPA)</th>
-                <th className="py-3 px-4">Skills</th>
-                <th className="py-3 px-4">Source</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Last Remark</th>
-                <th className="py-3 px-4">Recruiter</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+                <th className="py-3.5 px-4 sticky-col-first">Candidate & Exp</th>
+                <th className="py-3.5 px-4">Contact Info</th>
+                <th className="py-3.5 px-4">Current Org & City</th>
+                <th className="py-3.5 px-4">CTC (LPA)</th>
+                <th className="py-3.5 px-4">Skills</th>
+                <th className="py-3.5 px-4">Source</th>
+                <th className="py-3.5 px-4">Status</th>
+                <th className="py-3.5 px-4">Last Remark</th>
+                <th className="py-3.5 px-4">Recruiter</th>
+                <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-200">
               {paginatedCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={11} className="py-12 text-center text-slate-500">
                     No candidates found matching the selected filter criteria.
                   </td>
                 </tr>
@@ -632,45 +759,42 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                   return (
                     <tr
                       key={cand.id}
-                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
-                        isSelected ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''
+                      className={`hover:bg-slate-50 transition-colors ${
+                        isSelected ? 'bg-blue-50/40' : 'bg-white'
                       }`}
                     >
-                      {/* Checkbox */}
                       <td className="py-3 px-3">
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleSelectCandidate(cand.id)}
-                          className="rounded border-slate-300 text-[#0B1F4B] focus:ring-0 cursor-pointer"
+                          className="w-4 h-4 rounded border-slate-300 text-[#0B1F4B] accent-[#0B1F4B] cursor-pointer"
                         />
                       </td>
 
-                      {/* Name & Exp */}
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 sticky-col-first">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-[#0B1F4B]/10 dark:bg-blue-900/40 text-[#0B1F4B] dark:text-blue-300 font-bold flex items-center justify-center shrink-0">
+                          <div className="w-8 h-8 rounded-lg bg-[#0B1F4B] text-white font-bold flex items-center justify-center shrink-0">
                             {cand.fullName.charAt(0)}
                           </div>
                           <div>
                             <button
                               onClick={() => setActiveProfileCandidate(cand)}
-                              className="font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-amber-400 text-left block"
+                              className="font-bold text-slate-900 hover:text-[#0B1F4B] hover:underline text-left block cursor-pointer"
                             >
                               {cand.fullName}
                             </button>
-                            <span className="text-[11px] text-slate-500">
+                            <span className="text-[11px] text-slate-600">
                               {cand.experienceYears} Years Exp
                             </span>
                           </div>
                         </div>
                       </td>
 
-                      {/* Contact Info */}
                       <td className="py-3 px-4">
                         <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
-                            <Phone className="w-3 h-3 text-[#F5A623]" />
+                          <div className="flex items-center gap-1.5 font-semibold text-slate-900">
+                            <Phone className="w-3 h-3 text-[#0B1F4B]" />
                             <a href={`tel:${cand.phone}`} className="hover:underline">
                               {cand.phone}
                             </a>
@@ -678,13 +802,13 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                               href={whatsappUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-emerald-600 hover:text-emerald-700 ml-0.5"
+                              className="text-emerald-700 hover:text-emerald-800 ml-0.5"
                               title="Chat on WhatsApp"
                             >
-                              <Share2 className="w-3 h-3" />
+                              <Share2 className="w-3.5 h-3.5" />
                             </a>
                           </div>
-                          <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                          <div className="flex items-center gap-1 text-[11px] text-slate-600">
                             <Mail className="w-3 h-3 text-slate-400" />
                             <a href={`mailto:${cand.email}`} className="truncate max-w-[140px] hover:underline">
                               {cand.email}
@@ -693,65 +817,54 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                         </div>
                       </td>
 
-                      {/* Current Org & City */}
                       <td className="py-3 px-4">
-                        <div className="font-medium text-slate-800 dark:text-slate-200">
+                        <div className="font-semibold text-slate-900">
                           {cand.currentCompany}
                         </div>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <div className="text-[11px] text-slate-600 flex items-center gap-1">
                           <MapPin className="w-3 h-3 text-slate-400" />
                           <span>{cand.city}</span>
                         </div>
                       </td>
 
-                      {/* CTC (LPA) */}
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900 dark:text-white">
+                        <div className="font-bold text-slate-900">
                           ₹{cand.expectedSalaryLPA} LPA
                         </div>
-                        <div className="text-[10px] text-slate-400">Cur: ₹{cand.currentSalaryLPA} LPA</div>
+                        <div className="text-[11px] text-slate-600">Cur: ₹{cand.currentSalaryLPA} LPA</div>
                       </td>
 
-                      {/* Skills Tags */}
                       <td className="py-3 px-4 max-w-xs">
                         <div className="flex flex-wrap gap-1">
                           {cand.skills.slice(0, 2).map((s) => (
                             <span
                               key={s}
-                              className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
+                              className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-800 border border-slate-200 font-semibold"
                             >
                               {s}
                             </span>
                           ))}
                           {cand.skills.length > 2 && (
-                            <span className="text-[10px] text-slate-400 self-center">
+                            <span className="text-[10px] text-slate-600 font-semibold self-center">
                               +{cand.skills.length - 2}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      {/* Source */}
                       <td className="py-3 px-4">
-                        <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
                           {cand.source}
                         </span>
                       </td>
 
-                      {/* Status Selector */}
                       <td className="py-3 px-4">
                         <select
                           value={cand.status}
                           onChange={(e) => openStatusRemarkModal(cand, e.target.value as CandidateStatus)}
-                          className={`text-[11px] font-bold rounded-md px-2 py-1 border transition-colors cursor-pointer ${
-                            cand.status === 'Joined'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300'
-                              : cand.status === 'Offered'
-                              ? 'bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300'
-                              : cand.status === 'Rejected'
-                              ? 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300'
-                              : 'bg-blue-50 text-blue-900 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300'
-                          }`}
+                          className={`text-[11px] font-bold rounded-lg px-2 py-1 border transition-colors cursor-pointer ${getStatusSelectStyle(
+                            cand.status
+                          )}`}
                         >
                           <option value="New">New</option>
                           <option value="Screened">Screened</option>
@@ -759,34 +872,30 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                           <option value="Interview Scheduled">Interview</option>
                           <option value="Selected">Selected</option>
                           <option value="Offered">Offered</option>
-                          <option value="Joined">Joined</option>
+                          <option value="Placed">Placed</option>
                           <option value="Rejected">Rejected</option>
                           <option value="On Hold">On Hold</option>
                         </select>
                       </td>
 
-                      {/* Last Remark */}
                       <td className="py-3 px-4 max-w-[180px]" title={cand.remarks && cand.remarks.length > 0 ? cand.remarks[0].text : 'No remarks'}>
-                        <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate block">
+                        <span className="text-[11px] text-slate-700 truncate block">
                           {cand.remarks && cand.remarks.length > 0 ? cand.remarks[0].text : <span className="text-slate-400 italic">No remarks</span>}
                         </span>
                       </td>
 
-                      {/* Assigned Recruiter */}
                       <td className="py-3 px-4">
-                        <span className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">
+                        <span className="font-semibold text-slate-800 text-[11px]">
                           {cand.assignedRecruiterName.split(' ')[0]}
                         </span>
                       </td>
 
-                      {/* Actions */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {/* Set Reminder Button (Admin & HR Executive only) */}
                           {canCreateTasks && (
                             <button
                               onClick={() => setReminderCandidate(cand)}
-                              className="p-1 rounded text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                              className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-50 cursor-pointer"
                               title="Set Follow-up Reminder"
                             >
                               <Bell className="w-4 h-4" />
@@ -795,12 +904,11 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
 
                           <button
                             onClick={() => setActiveProfileCandidate(cand)}
-                            className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-[#0B1F4B] hover:bg-slate-100 cursor-pointer"
                             title="View Full Profile"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-
 
                           <button
                             onClick={() => {
@@ -808,7 +916,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                                 deleteCandidate(cand.id);
                               }
                             }}
-                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
                             title="Delete"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -822,34 +930,34 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             </tbody>
           </table>
         </div>
+      </div>
 
-        {/* Pagination Footer */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <div>
-            Showing {(currentPage - 1) * pageSize + 1} to{' '}
-            {Math.min(currentPage * pageSize, filteredCandidates.length)} of{' '}
-            {filteredCandidates.length} candidate entries
-          </div>
+      {/* Pagination Footer */}
+      <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 shadow-2xs">
+        <div>
+          Showing {filteredCandidates.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{' '}
+          {Math.min(currentPage * pageSize, filteredCandidates.length)} of{' '}
+          {filteredCandidates.length} candidate entries
+        </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-              disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-3 py-1 font-semibold text-slate-800 dark:text-slate-200">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            disabled={currentPage === 1}
+            className="min-h-[40px] min-w-[40px] p-2 rounded-xl border border-slate-300 bg-white text-slate-800 disabled:opacity-40 hover:bg-slate-50 flex items-center justify-center cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="px-3 py-1 font-bold text-slate-900">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="min-h-[40px] min-w-[40px] p-2 rounded-xl border border-slate-300 bg-white text-slate-800 disabled:opacity-40 hover:bg-slate-50 flex items-center justify-center cursor-pointer"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -898,7 +1006,6 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         allAccessibleData={visibleCandidates}
         filtersDescription={`Status: ${selectedStatus}, Search: "${search || 'All'}"`}
         summaryGenerator={generateCandidatesSummarySheet}
-
       />
 
       {/* Set Reminder Modal for Candidate */}
@@ -908,7 +1015,11 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         relatedType="candidate"
         relatedId={reminderCandidate?.id}
         relatedName={reminderCandidate?.fullName}
-        defaultTitle={reminderCandidate ? `Follow up with ${reminderCandidate.fullName} regarding ${reminderCandidate.currentCompany || 'recruitment'}` : undefined}
+        defaultTitle={
+          reminderCandidate
+            ? `Follow up with ${reminderCandidate.fullName} regarding ${reminderCandidate.currentCompany || 'recruitment'}`
+            : undefined
+        }
       />
     </div>
   );

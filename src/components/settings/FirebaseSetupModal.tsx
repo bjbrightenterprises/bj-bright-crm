@@ -3,11 +3,8 @@ import { Modal } from '../common/Modal';
 import { useCRM } from '../../context/CRMContext';
 import {
   Database,
-  CheckCircle2,
-  AlertCircle,
   Copy,
   ExternalLink,
-  ShieldAlert,
   Save,
   Trash2,
   Sparkles,
@@ -25,19 +22,19 @@ export const FirebaseSetupModal: React.FC<FirebaseSetupModalProps> = ({ isOpen, 
     saveFirebaseSettings,
     removeFirebaseSettings,
     resetAllData,
+    showToast,
   } = useCRM();
 
   const [apiKey, setApiKey] = useState(firebaseConfig?.apiKey || '');
   const [projectId, setProjectId] = useState(firebaseConfig?.projectId || '');
   const [authDomain, setAuthDomain] = useState(firebaseConfig?.authDomain || '');
   const [appId, setAppId] = useState(firebaseConfig?.appId || '');
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!apiKey.trim() || !projectId.trim()) {
-      alert('Please provide at least Firebase API Key and Project ID.');
+      showToast('Please provide at least Firebase API Key and Project ID.', 'error');
       return;
     }
 
@@ -48,11 +45,7 @@ export const FirebaseSetupModal: React.FC<FirebaseSetupModalProps> = ({ isOpen, 
       appId: appId.trim(),
     });
 
-    setSaveSuccess(true);
-    setTimeout(() => {
-      setSaveSuccess(false);
-      onClose();
-    }, 1500);
+    onClose();
   };
 
   const handleDisconnect = () => {
@@ -88,26 +81,56 @@ service cloud.firestore {
       title="Firebase Cloud Database & Sync Setup"
       subtitle="Connect Firebase Firestore + Authentication to persist and share CRM data across your Noida recruitment team"
       maxWidth="3xl"
+      footer={
+        <div className="flex items-center justify-between gap-3 w-full flex-wrap">
+          <button
+            type="button"
+            onClick={copyRules}
+            className="min-h-[40px] px-2 text-xs text-[#0B1F4B] font-bold hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            <span>{copiedSnippet ? 'Copied Security Rules!' : 'Copy Recommended Firestore Rules'}</span>
+          </button>
+
+          <div className="flex items-center gap-2.5 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-[44px] px-4 py-2 font-bold text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 rounded-xl text-xs cursor-pointer"
+            >
+              Close
+            </button>
+            <button
+              type="submit"
+              form="firebase-setup-form"
+              className="min-h-[44px] px-5 py-2 bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Save className="w-3.5 h-3.5 text-[#F5A623]" />
+              <span>Save Credentials</span>
+            </button>
+          </div>
+        </div>
+      }
     >
-      <div className="space-y-6 text-xs">
+      <div className="space-y-5 text-xs">
         {/* Status Banner */}
         <div
-          className={`p-4 rounded-xl border flex items-center justify-between gap-3 ${
+          className={`p-4 rounded-xl border flex items-center justify-between gap-3 flex-wrap ${
             isFirebaseConfigured
-              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-              : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+              : 'bg-amber-50 border-amber-300 text-amber-950'
           }`}
         >
           <div className="flex items-center gap-2.5">
-            <Database className="w-5 h-5 text-[#F5A623]" />
+            <Database className="w-5 h-5 text-[#F5A623] shrink-0" />
             <div>
               <p className="font-bold text-sm">
                 Status: {isFirebaseConfigured ? 'Connected to Firebase' : 'Active in Local Storage Mode'}
               </p>
-              <p className="mt-0.5 opacity-90">
+              <p className="mt-0.5 text-slate-700">
                 {isFirebaseConfigured
                   ? `Target Project: ${firebaseConfig?.projectId}. Ready for team-wide Firestore persistence.`
-                  : 'All candidate data, client records, and job openings are currently saved in your browser localStorage.'}
+                  : 'All candidate data, client records, and job openings are currently saved in your browser.'}
               </p>
             </div>
           </div>
@@ -115,7 +138,7 @@ service cloud.firestore {
           {isFirebaseConfigured && (
             <button
               onClick={handleDisconnect}
-              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1 transition-colors"
+              className="min-h-[38px] px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Disconnect</span>
@@ -124,19 +147,19 @@ service cloud.firestore {
         </div>
 
         {/* Short Setup Instructions */}
-        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-3">
-          <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[#F5A623]" />
-            Quick Setup Instructions: Connecting Your Firebase Project
+            <span>Quick Setup Instructions: Connecting Your Firebase Project</span>
           </h3>
-          <ol className="list-decimal list-inside space-y-1.5 text-slate-700 dark:text-slate-300 leading-relaxed">
+          <ol className="list-decimal list-inside space-y-1.5 text-slate-700 leading-relaxed">
             <li>
               Go to the{' '}
               <a
                 href="https://console.firebase.google.com"
                 target="_blank"
                 rel="noreferrer"
-                className="text-blue-600 dark:text-amber-400 font-bold hover:underline inline-flex items-center gap-0.5"
+                className="text-[#0B1F4B] font-bold hover:underline inline-flex items-center gap-0.5"
               >
                 <span>Firebase Console</span>
                 <ExternalLink className="w-3 h-3" />
@@ -144,7 +167,7 @@ service cloud.firestore {
               and click <strong>Add Project</strong> (e.g. <code>bj-bright-crm</code>).
             </li>
             <li>
-              Navigate to <strong>Build &gt; Firestore Database</strong> and click <strong>Create Database</strong> in Test or Production mode.
+              Navigate to <strong>Build &gt; Firestore Database</strong> and click <strong>Create Database</strong>.
             </li>
             <li>
               Navigate to <strong>Project Settings &gt; General &gt; Your apps</strong> and add a <strong>Web App (&lt;/&gt;)</strong>.
@@ -152,17 +175,14 @@ service cloud.firestore {
             <li>
               Copy the <code>firebaseConfig</code> values (API Key, Project ID, App ID) and paste them in the form below.
             </li>
-            <li>
-              Deploy the provided <code>firestore.rules</code> file included in the project root to secure access.
-            </li>
           </ol>
         </div>
 
         {/* Credentials Form */}
-        <form onSubmit={handleSave} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <form id="firebase-setup-form" onSubmit={handleSave} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 Firebase API Key *
               </label>
               <input
@@ -170,12 +190,12 @@ service cloud.firestore {
                 placeholder="AIzaSy..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900"
               />
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 Firebase Project ID *
               </label>
               <input
@@ -183,12 +203,12 @@ service cloud.firestore {
                 placeholder="bj-bright-enterprises-crm"
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900"
               />
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 Auth Domain (Optional)
               </label>
               <input
@@ -196,12 +216,12 @@ service cloud.firestore {
                 placeholder="bj-bright-enterprises.firebaseapp.com"
                 value={authDomain}
                 onChange={(e) => setAuthDomain(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900"
               />
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="font-bold text-slate-700 block mb-1">
                 App ID (Optional)
               </label>
               <input
@@ -209,57 +229,28 @@ service cloud.firestore {
                 placeholder="1:714256749852:web:..."
                 value={appId}
                 onChange={(e) => setAppId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900"
               />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={copyRules}
-              className="text-xs text-blue-600 dark:text-amber-400 font-bold hover:underline flex items-center gap-1"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              <span>{copiedSnippet ? 'Copied Security Rules!' : 'Copy Recommended Firestore Rules'}</span>
-            </button>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                Close
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold rounded-lg shadow-md flex items-center gap-1.5 transition-colors"
-              >
-                <Save className="w-3.5 h-3.5 text-[#F5A623]" />
-                <span>Save Credentials</span>
-              </button>
             </div>
           </div>
         </form>
 
         {/* Reset Database to Sample Data */}
-        <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+        <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="font-bold text-slate-900 dark:text-white">Restore Initial Demo Dataset</p>
-            <p className="text-[11px] text-slate-500">
-              Reset candidate records, Noida clients, jobs, and interviews back to default realistic seed data.
+            <p className="font-bold text-slate-900">Restore Initial Dataset</p>
+            <p className="text-[11px] text-slate-600">
+              Reset candidate records, Noida clients, jobs, and interviews back to default seed data.
             </p>
           </div>
           <button
             onClick={() => {
               if (confirm('Restore initial sample candidates and clients?')) {
                 resetAllData();
-                alert('Initial dataset restored successfully!');
                 onClose();
               }
             }}
-            className="px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold whitespace-nowrap"
+            className="min-h-[38px] px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold whitespace-nowrap cursor-pointer"
           >
             Reset Sample Data
           </button>

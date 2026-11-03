@@ -13,20 +13,20 @@ export const Badge: React.FC<BadgeProps> = ({
   size = 'md',
   className = '',
 }) => {
-  const sizeClasses = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs font-medium';
+  const sizeClasses = size === 'sm' ? 'px-2 py-0.5 text-xs font-semibold' : 'px-2.5 py-1 text-xs font-bold';
 
   const variantClasses = {
-    primary: 'bg-[#0B1F4B]/10 text-[#0B1F4B] dark:bg-blue-900/40 dark:text-blue-300 border border-[#0B1F4B]/20',
-    gold: 'bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50',
-    success: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/50',
-    warning: 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-300/50',
-    danger: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/50',
-    info: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-300/50',
-    neutral: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700',
+    primary: 'bg-[#0B1F4B]/10 text-[#0B1F4B] border border-[#0B1F4B]/25',
+    gold: 'bg-amber-100 text-amber-950 border border-amber-300',
+    success: 'bg-emerald-100 text-emerald-900 border border-emerald-300',
+    warning: 'bg-orange-100 text-orange-900 border border-orange-300',
+    danger: 'bg-rose-100 text-rose-900 border border-rose-300',
+    info: 'bg-sky-100 text-sky-900 border border-sky-300',
+    neutral: 'bg-slate-100 text-slate-800 border border-slate-300',
   }[variant];
 
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md font-medium tracking-wide ${sizeClasses} ${variantClasses} ${className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-md tracking-wide ${sizeClasses} ${variantClasses} ${className}`}>
       {children}
     </span>
   );

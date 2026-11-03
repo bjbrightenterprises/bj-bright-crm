@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { Interview, InterviewMode, InterviewStatus, Candidate } from '../../types/crm';
 import { useCRM } from '../../context/CRMContext';
-import { Calendar, Video, MapPin, Phone } from 'lucide-react';
 
 interface ScheduleInterviewModalProps {
   isOpen: boolean;
@@ -52,7 +51,6 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
       setJobId(selectedCand?.jobId || jobs[0]?.id || '');
       setRoundName('Round 1: Technical Screening');
 
-      // Default to tomorrow 11:00 AM
       const d = new Date();
       d.setDate(d.getDate() + 1);
       d.setHours(11, 0, 0, 0);
@@ -68,7 +66,6 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
     setErrors({});
   }, [interviewToEdit, preSelectedCandidate, isOpen, candidates, clients, jobs]);
 
-  // Adjust venue when mode changes
   const handleModeChange = (newMode: InterviewMode) => {
     setMode(newMode);
     if (newMode === 'Google Meet') {
@@ -81,8 +78,8 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const newErrors: Record<string, string> = {};
     if (!candidateId) newErrors.candidateId = 'Please select candidate';
     if (!dateTime) newErrors.dateTime = 'Interview date & time is required';
@@ -144,12 +141,30 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
       title={interviewToEdit ? 'Edit Interview / Follow-up' : 'Schedule Candidate Interview'}
       subtitle="BJ Bright Enterprises • Noida Interview Coordination"
       maxWidth="2xl"
+      footer={
+        <div className="flex items-center justify-end gap-3 w-full">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[44px] px-4 py-2 rounded-xl font-bold text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSubmit()}
+            className="min-h-[44px] px-5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold text-xs shadow-md transition-colors cursor-pointer"
+          >
+            {interviewToEdit ? 'Save Changes' : 'Schedule Interview'}
+          </button>
+        </div>
+      }
     >
-      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+      <form onSubmit={handleSubmit} className="space-y-4 text-xs text-slate-900">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Candidate */}
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Select Candidate *
             </label>
             <select
@@ -160,7 +175,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
                 if (c?.clientId) setClientId(c.clientId);
                 if (c?.jobId) setJobId(c.jobId);
               }}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             >
               <option value="">-- Choose Candidate --</option>
               {candidates.map((c) => (
@@ -169,18 +184,18 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
                 </option>
               ))}
             </select>
-            {errors.candidateId && <p className="text-[11px] text-rose-500 mt-1">{errors.candidateId}</p>}
+            {errors.candidateId && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.candidateId}</p>}
           </div>
 
           {/* Client Company */}
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Client Company
             </label>
             <select
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             >
               {clients.map((cl) => (
                 <option key={cl.id} value={cl.id}>
@@ -192,13 +207,13 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
 
           {/* Job Mandate */}
           <div className="md:col-span-2">
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Target Job Opening
             </label>
             <select
               value={jobId}
               onChange={(e) => setJobId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             >
               {jobs.map((j) => (
                 <option key={j.id} value={j.id}>
@@ -210,7 +225,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
 
           {/* Round Name */}
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Round Name / Assessment
             </label>
             <input
@@ -218,33 +233,33 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
               placeholder="e.g. L1 Technical Cloud Panel, Client HR Round"
               value={roundName}
               onChange={(e) => setRoundName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
           </div>
 
           {/* Date & Time */}
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Date & Time Slot (IST) *
             </label>
             <input
               type="datetime-local"
               value={dateTime}
               onChange={(e) => setDateTime(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
-            {errors.dateTime && <p className="text-[11px] text-rose-500 mt-1">{errors.dateTime}</p>}
+            {errors.dateTime && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.dateTime}</p>}
           </div>
 
           {/* Mode */}
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Interview Mode
             </label>
             <select
               value={mode}
               onChange={(e) => handleModeChange(e.target.value as InterviewMode)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             >
               <option value="Google Meet">Google Meet (Online Video)</option>
               <option value="In-Person (Noida Office)">In-Person (BJ Bright Noida Office)</option>
@@ -254,7 +269,7 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
 
           {/* Interviewer Name */}
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Client Interviewer / Panelist
             </label>
             <input
@@ -262,13 +277,13 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
               placeholder="e.g. Sanjeev Mukherji (VP Lateral Hiring)"
               value={interviewerName}
               onChange={(e) => setInterviewerName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
           </div>
 
           {/* Meeting Link or Venue */}
           <div className="md:col-span-2">
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               {mode === 'Google Meet'
                 ? 'Meeting URL Link *'
                 : mode === 'In-Person (Noida Office)'
@@ -276,34 +291,35 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
                 : 'Contact Phone Number *'}
             </label>
             <input
-              type="text"
+              type={mode === 'Google Meet' ? 'url' : mode === 'Telephonic' ? 'tel' : 'text'}
+              inputMode={mode === 'Google Meet' ? 'url' : mode === 'Telephonic' ? 'tel' : 'text'}
               placeholder="https://meet.google.com/..."
               value={venueOrLink}
               onChange={(e) => setVenueOrLink(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
             {errors.venueOrLink && (
-              <p className="text-[11px] text-rose-500 mt-1">{errors.venueOrLink}</p>
+              <p className="text-xs text-rose-600 font-semibold mt-1">{errors.venueOrLink}</p>
             )}
           </div>
 
           {/* Follow-up flag */}
-          <div className="md:col-span-2 flex items-center gap-2 pt-1">
+          <div className="md:col-span-2 flex items-center gap-2.5 pt-1 min-h-[44px]">
             <input
               type="checkbox"
               id="isFollowUpCheck"
               checked={isFollowUp}
               onChange={(e) => setIsFollowUp(e.target.checked)}
-              className="w-4 h-4 rounded text-[#0B1F4B] accent-[#0B1F4B]"
+              className="w-5 h-5 rounded text-[#0B1F4B] accent-[#0B1F4B]"
             />
-            <label htmlFor="isFollowUpCheck" className="font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+            <label htmlFor="isFollowUpCheck" className="font-bold text-slate-800 cursor-pointer">
               Mark as Priority Task / Document Follow-up (Flags overdue in red if missed)
             </label>
           </div>
 
           {/* Notes */}
           <div className="md:col-span-2">
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Instructions & Preparation Notes
             </label>
             <textarea
@@ -311,25 +327,9 @@ export const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({
               placeholder="Important candidate instructions, salary guidelines, or specific client test topics..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full p-2.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
             />
           </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="px-5 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold shadow-md transition-colors"
-          >
-            {interviewToEdit ? 'Save Changes' : 'Schedule Interview'}
-          </button>
         </div>
       </form>
     </Modal>

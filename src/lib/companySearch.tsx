@@ -269,26 +269,23 @@ export function getSectionBadgeMeta(client: Client): {
     return {
       section: 'Green',
       label: 'Active',
-      dotClass: 'bg-emerald-500',
-      badgeClass:
-        'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800',
+      dotClass: 'bg-emerald-600',
+      badgeClass: 'bg-emerald-50 text-emerald-900 border-emerald-300',
     };
   }
   if (section === 'Blue') {
     return {
       section: 'Blue',
       label: 'In Discussion',
-      dotClass: 'bg-blue-500',
-      badgeClass:
-        'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800',
+      dotClass: 'bg-blue-600',
+      badgeClass: 'bg-blue-50 text-blue-900 border-blue-300',
     };
   }
   return {
     section: 'Red',
     label: 'New Enquiry',
-    dotClass: 'bg-rose-500',
-    badgeClass:
-      'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800',
+    dotClass: 'bg-rose-600',
+    badgeClass: 'bg-rose-50 text-rose-900 border-rose-300',
   };
 }
 
@@ -413,7 +410,7 @@ export const HighlightMatch: React.FC<{
     parts.push(
       <mark
         key={`${start}-${end}-${i}`}
-        className="bg-amber-200/90 dark:bg-amber-500/40 text-slate-950 dark:text-amber-100 rounded-xs px-0.5 font-bold"
+        className="bg-amber-200 text-slate-950 rounded-xs px-0.5 font-bold"
       >
         {safeText.slice(start, end)}
       </mark>

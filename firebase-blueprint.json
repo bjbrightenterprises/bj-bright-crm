@@ -28,7 +28,10 @@
         "city": { "type": "string" },
         "assignedRecruiterId": { "type": "string" },
         "assignedRecruiterName": { "type": "string" },
-        "status": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["New", "Screened", "Shortlisted", "Interview Scheduled", "Selected", "Offered", "Placed", "Rejected", "On Hold"]
+        },
         "lastEditReason": { "type": "string" }
       },
       "required": ["id", "fullName", "phone", "assignedRecruiterId", "status"]
@@ -71,7 +74,10 @@
         "id": { "type": "string" },
         "candidateId": { "type": "string" },
         "jobId": { "type": "string" },
-        "stage": { "type": "string" },
+        "stage": {
+          "type": "string",
+          "enum": ["Sourced", "Screened", "Submitted to Client", "Interview", "Offer", "Placed", "Rejected"]
+        },
         "assignedRecruiterId": { "type": "string" }
       },
       "required": ["id", "candidateId", "jobId", "stage", "assignedRecruiterId"]

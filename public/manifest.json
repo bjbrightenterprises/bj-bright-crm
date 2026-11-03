@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "BJ Bright CRM",
+  "short_name": "BJ CRM",
+  "description": "BJ Bright Enterprises Corporate Recruitment & Manpower CRM Portal",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0B1F4B",
+  "icons": [
+    {
+      "src": "/assets/aistudio/BJ-Bright-logo-circle_cb142036.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/aistudio/BJ-Bright-logo-circle_cb142036.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/aistudio/BJ-Bright-logo-circle_cb142036.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

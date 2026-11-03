@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../common/Modal';
-import { ReminderTask, ReminderPriority, ReminderCategory } from '../../types/crm';
+import { ReminderPriority, ReminderCategory } from '../../types/crm';
 import { useCRM } from '../../context/CRMContext';
-import { Bell, Calendar, Clock, AlertCircle } from 'lucide-react';
 
 interface SetReminderModalProps {
   isOpen: boolean;
@@ -30,7 +29,6 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
   const [priority, setPriority] = useState<ReminderPriority>('Medium');
   const [category, setCategory] = useState<ReminderCategory>('Follow-up');
 
-  // HR Executive can assign ONLY to active Recruiters; Admin can assign to anyone active
   const eligibleAssignees = useMemo(() => {
     if (currentUser.role === 'hr_executive') {
       return users.filter((u) => u.role === 'recruiter' && u.active);
@@ -44,7 +42,6 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
     if (isOpen) {
       setTitle(defaultTitle || (relatedName ? `Follow up on ${relatedName}` : ''));
       setDescription('');
-      // Default to tomorrow
       const d = new Date();
       d.setDate(d.getDate() + 1);
       setDueDate(d.toISOString().split('T')[0]);
@@ -66,24 +63,14 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
     }
   }, [isOpen, defaultTitle, relatedName, relatedType, currentUser, users]);
 
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canCreateTasks) {
-      alert('Access Restricted: Only Admin and HR Executive can assign tasks.');
-      return;
-    }
-    if (!title.trim() || !dueDate) {
-      alert('Please provide a title and due date.');
-      return;
-    }
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!canCreateTasks) return;
+    if (!title.trim() || !dueDate) return;
 
     if (currentUser.role === 'hr_executive') {
       const assigned = users.find((u) => u.id === assignedToUserId);
-      if (!assigned || assigned.role !== 'recruiter' || !assigned.active) {
-        alert('Access Restricted: HR Executive can ONLY assign tasks to active Recruiters.');
-        return;
-      }
+      if (!assigned || assigned.role !== 'recruiter' || !assigned.active) return;
     }
 
     const assignedUser = users.find((u) => u.id === assignedToUserId);
@@ -113,10 +100,28 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
       title="Set Follow-up Reminder & Task"
       subtitle={relatedName ? `Linked to: ${relatedName} (${relatedType?.toUpperCase()})` : 'BJ Bright Enterprises • Task Manager'}
       maxWidth="md"
+      footer={
+        <div className="flex justify-end gap-2.5 w-full">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[44px] px-4 py-2 font-bold text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSubmit()}
+            className="min-h-[44px] px-5 py-2 bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold text-xs rounded-xl shadow-md transition-colors cursor-pointer"
+          >
+            Set Reminder
+          </button>
+        </div>
+      }
     >
-      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+      <form onSubmit={handleSubmit} className="space-y-4 text-xs text-slate-900">
         <div>
-          <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <label className="font-bold text-slate-800 block mb-1">
             Reminder Title *
           </label>
           <input
@@ -124,47 +129,47 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
             placeholder="e.g. Call candidate to confirm joining date / Collect documents"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+            className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             required
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Due Date *
             </label>
             <input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
               required
             />
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Time (IST)
             </label>
             <input
               type="time"
               value={dueTime}
               onChange={(e) => setDueTime(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Category
             </label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as ReminderCategory)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
             >
               <option value="Follow-up">Candidate Follow-up</option>
               <option value="Interview">Interview Coordination</option>
@@ -175,13 +180,13 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="font-bold text-slate-800 block mb-1">
               Priority
             </label>
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value as ReminderPriority)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
             >
               <option value="High">High (Critical SLA)</option>
               <option value="Medium">Medium</option>
@@ -191,13 +196,13 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
         </div>
 
         <div>
-          <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <label className="font-bold text-slate-800 block mb-1">
             {currentUser.role === 'hr_executive' ? 'Assign To Active Recruiter *' : 'Assign To Team Member *'}
           </label>
           <select
             value={assignedToUserId}
             onChange={(e) => setAssignedToUserId(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
             required
           >
             {eligibleAssignees.length === 0 ? (
@@ -211,14 +216,14 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
             )}
           </select>
           {currentUser.role === 'hr_executive' && (
-            <p className="text-[10px] text-slate-500 mt-1">
+            <p className="text-xs text-slate-600 mt-1">
               As HR Executive, company policy allows assigning tasks exclusively to active Recruiters.
             </p>
           )}
         </div>
 
         <div>
-          <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <label className="font-bold text-slate-800 block mb-1">
             Notes & Action Description
           </label>
           <textarea
@@ -226,24 +231,8 @@ export const SetReminderModal: React.FC<SetReminderModalProps> = ({
             placeholder="Add relevant context or checklist..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+            className="w-full p-2.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
           />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 font-semibold text-slate-500 hover:bg-slate-100 rounded-lg"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="px-5 py-2 bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold rounded-lg shadow-md transition-colors"
-          >
-            Set Reminder
-          </button>
         </div>
       </form>
     </Modal>

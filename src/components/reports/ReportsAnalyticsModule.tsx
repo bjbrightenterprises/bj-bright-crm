@@ -1,20 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import {
   BarChart3,
-  Calendar,
   Download,
   FileSpreadsheet,
   Printer,
   TrendingUp,
-  TrendingDown,
   Users,
-  CheckCircle2,
   Share2,
-  Sparkles,
-  Award,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
-import { Badge } from '../common/Badge';
 import { ExcelExportModal } from '../common/ExcelExportModal';
 import {
   PERFORMANCE_REPORT_EXPORT_COLUMNS,
@@ -37,7 +31,6 @@ export const ReportsAnalyticsModule: React.FC = () => {
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
-
   // Filter team members based on role
   const targetUsers = useMemo(() => {
     if (isRecruiterOrHr) {
@@ -51,12 +44,15 @@ export const ReportsAnalyticsModule: React.FC = () => {
     return targetUsers.map((u) => {
       const userCands = candidates.filter((c) => c.assignedRecruiterId === u.id);
       const userInterviews = interviews.filter((i) => i.assignedToRecruiterId === u.id);
-      const userSubmissions = pipeline.filter((p) => p.assignedRecruiterId === u.id && p.stage === 'Submitted to Client');
+      const userSubmissions = pipeline.filter(
+        (p) => p.assignedRecruiterId === u.id && p.stage === 'Submitted to Client'
+      );
       const userOffers = userCands.filter((c) => c.status === 'Offered');
-      const userJoinings = userCands.filter((c) => c.status === 'Joined');
-      const userTasks = reminders.filter((r) => r.assignedToUserId === u.id && r.status === 'Completed');
+      const userJoinings = userCands.filter((c) => c.status === 'Placed');
+      const userTasks = reminders.filter(
+        (r) => r.assignedToUserId === u.id && r.status === 'Completed'
+      );
 
-      // Simulated previous period comparison (e.g., +10% or +1)
       const prevCands = Math.max(0, userCands.length - 2);
       const prevInterviews = Math.max(0, userInterviews.length - 1);
       const prevJoinings = Math.max(0, userJoinings.length - 1);
@@ -107,7 +103,8 @@ export const ReportsAnalyticsModule: React.FC = () => {
       joiningsPlaced: r.joinings,
       tasksCompleted: r.tasksCompleted,
       pendingOverdueTasks: 0,
-      conversionRatePercent: r.candidatesAdded > 0 ? Number(((r.joinings / r.candidatesAdded) * 100).toFixed(1)) : 0,
+      conversionRatePercent:
+        r.candidatesAdded > 0 ? Number(((r.joinings / r.candidatesAdded) * 100).toFixed(1)) : 0,
     }));
   }, [performanceRows]);
 
@@ -116,7 +113,16 @@ export const ReportsAnalyticsModule: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Team Member', 'Role', 'Candidates Added', 'Interviews', 'Submitted to Client', 'Offers', 'Joinings', 'Tasks Completed'];
+    const headers = [
+      'Team Member',
+      'Role',
+      'Candidates Added',
+      'Interviews',
+      'Submitted to Client',
+      'Offers',
+      'Placements',
+      'Tasks Completed',
+    ];
     const rows = performanceRows.map((r) => [
       r.name,
       r.designation,
@@ -132,7 +138,10 @@ export const ReportsAnalyticsModule: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `BJ_Bright_${period.toUpperCase()}_Performance_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute(
+      'download',
+      `BJ_Bright_${period.toUpperCase()}_Performance_Report_${new Date().toISOString().slice(0, 10)}.csv`
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -146,11 +155,11 @@ export const ReportsAnalyticsModule: React.FC = () => {
 • Interviews Scheduled: ${totals.interviews}
 • Profiles Submitted: ${totals.submitted}
 • Job Offers: ${totals.offers}
-• Joinings: ${totals.joinings}
+• Placements: ${totals.joinings}
 • Tasks Completed: ${totals.tasksCompleted}
 
 💼 *Top Performers:*
-${performanceRows.map((r) => `• ${r.name}: ${r.joinings} Joinings, ${r.interviews} Interviews`).join('\n')}
+${performanceRows.map((r) => `• ${r.name}: ${r.joinings} Placements, ${r.interviews} Interviews`).join('\n')}
 
 _Generated via ${companySettings.companyName} CRM (Noida Sec 62)_`;
 
@@ -160,41 +169,41 @@ _Generated via ${companySettings.companyName} CRM (Noida Sec 62)_`;
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-bold uppercase mb-1">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200 text-[10px] font-bold uppercase mb-1">
             <span>Executive Analytics</span>
           </div>
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-[#F5A623]" />
-            Daily & Weekly Performance Report
+          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-[#F5A623] shrink-0" />
+            <span>Daily & Weekly Performance Report</span>
           </h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-600 mt-0.5">
             Recruiter activity, client submissions, interview conversions, and placement milestones
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Daily / Weekly Toggle */}
-          <div className="flex p-1 rounded-xl bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+          <div className="flex p-1 rounded-xl bg-slate-200 border border-slate-300">
             <button
               onClick={() => setPeriod('daily')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`min-h-[34px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 period === 'daily'
-                  ? 'bg-[#0B1F4B] text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
+                  ? 'bg-[#0B1F4B] text-white shadow-2xs'
+                  : 'text-slate-700 hover:text-slate-900'
               }`}
             >
               Daily Report
             </button>
             <button
               onClick={() => setPeriod('weekly')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`min-h-[34px] px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 period === 'weekly'
-                  ? 'bg-[#0B1F4B] text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
+                  ? 'bg-[#0B1F4B] text-white shadow-2xs'
+                  : 'text-slate-700 hover:text-slate-900'
               }`}
             >
               Weekly Report
@@ -203,24 +212,24 @@ _Generated via ${companySettings.companyName} CRM (Noida Sec 62)_`;
 
           <button
             onClick={handleCopyWhatsApp}
-            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            className="min-h-[42px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
           >
             <Share2 className="w-3.5 h-3.5" />
-            <span>{copiedWhatsApp ? 'Copied to Clipboard!' : 'Copy for WhatsApp'}</span>
+            <span>{copiedWhatsApp ? 'Copied!' : 'Copy for WhatsApp'}</span>
           </button>
 
           <button
             onClick={() => setIsExportModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            className="min-h-[42px] px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Export full workbook with live summary Excel formulas to .xlsx"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>Export to Excel</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Export Excel</span>
           </button>
 
           <button
             onClick={handleExportCSV}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="min-h-[42px] px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -228,7 +237,7 @@ _Generated via ${companySettings.companyName} CRM (Noida Sec 62)_`;
 
           <button
             onClick={handlePrintPDF}
-            className="px-3.5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5 text-[#F5A623]" />
             <span>Print / PDF</span>
@@ -236,105 +245,188 @@ _Generated via ${companySettings.companyName} CRM (Noida Sec 62)_`;
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-[10px] font-bold uppercase text-slate-400">Candidates Added</span>
-          <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{totals.candidatesAdded}</p>
-          <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+      {/* Summary KPI Cards (2-col on mobile, 3-col on tablet, 6-col on desktop) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+          <span className="text-[10px] font-bold uppercase text-slate-600 block">Candidates Added</span>
+          <p className="text-2xl font-extrabold text-slate-900">{totals.candidatesAdded}</p>
+          <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1">
             <TrendingUp className="w-3 h-3" /> +15% vs prev
           </span>
         </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-[10px] font-bold uppercase text-slate-400">Interviews</span>
-          <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{totals.interviews}</p>
-          <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+          <span className="text-[10px] font-bold uppercase text-slate-600 block">Interviews</span>
+          <p className="text-2xl font-extrabold text-slate-900">{totals.interviews}</p>
+          <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1">
             <TrendingUp className="w-3 h-3" /> +8% vs prev
           </span>
         </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-[10px] font-bold uppercase text-slate-400">Client Submissions</span>
-          <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{totals.submitted}</p>
-          <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+          <span className="text-[10px] font-bold uppercase text-slate-600 block">Client Submissions</span>
+          <p className="text-2xl font-extrabold text-slate-900">{totals.submitted}</p>
+          <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1">
             <TrendingUp className="w-3 h-3" /> Active pipeline
           </span>
         </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-[10px] font-bold uppercase text-slate-400">Offers Released</span>
-          <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{totals.offers}</p>
-          <span className="text-[10px] font-semibold text-amber-600 flex items-center gap-1">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+          <span className="text-[10px] font-bold uppercase text-slate-600 block">Offers Released</span>
+          <p className="text-2xl font-extrabold text-slate-900">{totals.offers}</p>
+          <span className="text-[10px] font-semibold text-amber-800 flex items-center gap-1">
             Pending joining
           </span>
         </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-[10px] font-bold uppercase text-slate-400">Joinings</span>
-          <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{totals.joinings}</p>
-          <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+          <span className="text-[10px] font-bold uppercase text-slate-600 block">Placements</span>
+          <p className="text-2xl font-extrabold text-emerald-700">{totals.joinings}</p>
+          <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1">
             <TrendingUp className="w-3 h-3" /> Successful
           </span>
         </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
-          <span className="text-[10px] font-bold uppercase text-slate-400">Tasks Completed</span>
-          <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{totals.tasksCompleted}</p>
-          <span className="text-[10px] font-semibold text-blue-600">On schedule</span>
+        <div className="p-3.5 sm:p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+          <span className="text-[10px] font-bold uppercase text-slate-600 block">Tasks Completed</span>
+          <p className="text-2xl font-extrabold text-slate-900">{totals.tasksCompleted}</p>
+          <span className="text-[10px] font-semibold text-[#0B1F4B]">On schedule</span>
         </div>
       </div>
 
-      {/* Detailed Team Performance Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+      {/* MOBILE VIEW (<768px): Stacked Consultant Performance Cards */}
+      <div className="md:hidden space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
             <Users className="w-4 h-4 text-[#0B1F4B]" />
-            Team Member Breakdown ({period === 'daily' ? 'Today' : 'This Week'})
+            <span>Team Breakdown ({period === 'daily' ? 'Today' : 'This Week'})</span>
           </h3>
-          <span className="text-xs text-slate-500">
-            {isRecruiterOrHr ? 'Showing personal performance metrics' : 'Showing all Noida office consultants'}
+        </div>
+
+        {performanceRows.map((row) => (
+          <div
+            key={row.id}
+            className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3 text-xs"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <img
+                  src={row.avatar}
+                  alt={row.name}
+                  className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                />
+                <div>
+                  <p className="font-extrabold text-sm text-slate-900">{row.name}</p>
+                  <p className="text-[10px] text-slate-600 uppercase font-bold">{row.designation}</p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-200 font-extrabold text-xs">
+                {row.joinings} Placements
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold block">Added</span>
+                <span className="font-extrabold text-slate-900 text-sm">{row.candidatesAdded}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold block">Interviews</span>
+                <span className="font-extrabold text-slate-900 text-sm">{row.interviews}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold block">Submitted</span>
+                <span className="font-extrabold text-slate-900 text-sm">{row.submitted}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold block">Offers</span>
+                <span className="font-extrabold text-amber-800 text-sm">{row.offers}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold block">Placements</span>
+                <span className="font-extrabold text-emerald-700 text-sm">{row.joinings}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold block">Tasks Done</span>
+                <span className="font-extrabold text-slate-900 text-sm">{row.tasksCompleted}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* TABLET & DESKTOP VIEW (>=768px): Detailed Team Performance Table */}
+      <div className="hidden md:block bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+            <Users className="w-4 h-4 text-[#0B1F4B]" />
+            <span>Team Member Breakdown ({period === 'daily' ? 'Today' : 'This Week'})</span>
+          </h3>
+          <span className="text-xs text-slate-600">
+            {isRecruiterOrHr
+              ? 'Showing personal performance metrics'
+              : 'Showing all Noida office consultants'}
           </span>
         </div>
 
-        <table className="w-full text-left text-xs">
-          <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200 dark:border-slate-800">
-            <tr>
-              <th className="py-3 px-4">Consultant / Member</th>
-              <th className="py-3 px-4 text-center">Candidates Added</th>
-              <th className="py-3 px-4 text-center">Interviews</th>
-              <th className="py-3 px-4 text-center">Client Submissions</th>
-              <th className="py-3 px-4 text-center">Offers</th>
-              <th className="py-3 px-4 text-center">Joinings</th>
-              <th className="py-3 px-4 text-right">Tasks Done</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {performanceRows.map((row) => (
-              <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                <td className="py-3 px-4 flex items-center gap-3">
-                  <img src={row.avatar} alt={row.name} className="w-8 h-8 rounded-full object-cover border border-slate-200" />
-                  <div>
-                    <p className="font-bold text-slate-900 dark:text-white">{row.name}</p>
-                    <p className="text-[10px] text-slate-500 uppercase">{row.designation}</p>
-                  </div>
-                </td>
-                <td className="py-3 px-4 text-center font-semibold">
-                  {row.candidatesAdded}{' '}
-                  <span className="text-[10px] text-emerald-600 font-bold">({row.candidatesDiff >= 0 ? `+${row.candidatesDiff}` : row.candidatesDiff})</span>
-                </td>
-                <td className="py-3 px-4 text-center font-semibold">
-                  {row.interviews}{' '}
-                  <span className="text-[10px] text-emerald-600 font-bold">({row.interviewsDiff >= 0 ? `+${row.interviewsDiff}` : row.interviewsDiff})</span>
-                </td>
-                <td className="py-3 px-4 text-center font-semibold">{row.submitted}</td>
-                <td className="py-3 px-4 text-center font-semibold text-amber-600">{row.offers}</td>
-                <td className="py-3 px-4 text-center font-bold text-emerald-600 dark:text-emerald-400">{row.joinings}</td>
-                <td className="py-3 px-4 text-right font-semibold text-slate-700 dark:text-slate-300">{row.tasksCompleted}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-slate-100 text-slate-700 font-extrabold uppercase text-[10px] border-b border-slate-200">
+              <tr>
+                <th className="py-3.5 px-4 sticky-col-first">Consultant / Member</th>
+                <th className="py-3.5 px-4 text-center">Candidates Added</th>
+                <th className="py-3.5 px-4 text-center">Interviews</th>
+                <th className="py-3.5 px-4 text-center">Client Submissions</th>
+                <th className="py-3.5 px-4 text-center">Offers</th>
+                <th className="py-3.5 px-4 text-center">Placements</th>
+                <th className="py-3.5 px-4 text-right">Tasks Done</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {performanceRows.map((row) => (
+                <tr key={row.id} className="hover:bg-slate-50 bg-white">
+                  <td className="py-3 px-4 sticky-col-first">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={row.avatar}
+                        alt={row.name}
+                        className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
+                      />
+                      <div>
+                        <p className="font-bold text-slate-900">{row.name}</p>
+                        <p className="text-[10px] text-slate-600 uppercase font-semibold">
+                          {row.designation}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-center font-semibold text-slate-900">
+                    {row.candidatesAdded}{' '}
+                    <span className="text-[10px] text-emerald-700 font-bold">
+                      ({row.candidatesDiff >= 0 ? `+${row.candidatesDiff}` : row.candidatesDiff})
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center font-semibold text-slate-900">
+                    {row.interviews}{' '}
+                    <span className="text-[10px] text-emerald-700 font-bold">
+                      ({row.interviewsDiff >= 0 ? `+${row.interviewsDiff}` : row.interviewsDiff})
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center font-semibold text-slate-900">
+                    {row.submitted}
+                  </td>
+                  <td className="py-3 px-4 text-center font-bold text-amber-800">{row.offers}</td>
+                  <td className="py-3 px-4 text-center font-extrabold text-emerald-700">
+                    {row.joinings}
+                  </td>
+                  <td className="py-3 px-4 text-right font-semibold text-slate-800">
+                    {row.tasksCompleted}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <ExcelExportModal
@@ -346,11 +438,11 @@ _Generated via ${companySettings.companyName} CRM (Noida Sec 62)_`;
         columns={PERFORMANCE_REPORT_EXPORT_COLUMNS}
         filteredData={exportPerformanceData}
         allAccessibleData={exportPerformanceData}
-        filtersDescription={`Period: ${period === 'daily' ? 'Daily' : 'Weekly'}, Scope: ${isRecruiterOrHr ? 'Own Performance' : 'All Consultants'}`}
+        filtersDescription={`Period: ${period === 'daily' ? 'Daily' : 'Weekly'}, Scope: ${
+          isRecruiterOrHr ? 'Own Performance' : 'All Consultants'
+        }`}
         summaryGenerator={generatePerformanceSummarySheet}
       />
     </div>
-
   );
 };
-

@@ -51,6 +51,34 @@ service cloud.firestore {
         request.resource.data.lastEditReason.trim().size() > 0;
     }
 
+    function isValidCandidateStatus() {
+      return !('status' in request.resource.data) ||
+        request.resource.data.status in [
+          'New',
+          'Screened',
+          'Shortlisted',
+          'Interview Scheduled',
+          'Selected',
+          'Offered',
+          'Placed',
+          'Rejected',
+          'On Hold'
+        ];
+    }
+
+    function isValidPipelineStage() {
+      return !('stage' in request.resource.data) ||
+        request.resource.data.stage in [
+          'Sourced',
+          'Screened',
+          'Submitted to Client',
+          'Interview',
+          'Offer',
+          'Placed',
+          'Rejected'
+        ];
+    }
+
     // ==================== CONNECTION TEST ====================
     match /test/{docId} {
       allow read: if true;
@@ -82,13 +110,15 @@ service cloud.firestore {
         resource.data.assignedRecruiterId == request.auth.uid
       );
 
-      allow create: if isActiveUser() && (
-        isAdminOrManager() ||
-        request.resource.data.assignedRecruiterId == request.auth.uid
-      );
+      allow create: if isActiveUser() &&
+        isValidCandidateStatus() && (
+          isAdminOrManager() ||
+          request.resource.data.assignedRecruiterId == request.auth.uid
+        );
 
       // Edits to candidates must include a non-empty edit reason
       allow update: if isActiveUser() &&
+        isValidCandidateStatus() &&
         hasNonEmptyEditReason() && (
           isAdminOrManager() ||
           resource.data.assignedRecruiterId == request.auth.uid
@@ -133,15 +163,17 @@ service cloud.firestore {
         resource.data.assignedRecruiterId == request.auth.uid
       );
 
-      allow create: if isActiveUser() && (
-        isAdminOrManager() ||
-        request.resource.data.assignedRecruiterId == request.auth.uid
-      );
+      allow create: if isActiveUser() &&
+        isValidPipelineStage() && (
+          isAdminOrManager() ||
+          request.resource.data.assignedRecruiterId == request.auth.uid
+        );
 
-      allow update: if isActiveUser() && (
-        isAdminOrManager() ||
-        resource.data.assignedRecruiterId == request.auth.uid
-      );
+      allow update: if isActiveUser() &&
+        isValidPipelineStage() && (
+          isAdminOrManager() ||
+          resource.data.assignedRecruiterId == request.auth.uid
+        );
 
       allow delete: if isAdmin();
     }
@@ -200,13 +232,14 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // ==================== REMARKS (CREATE-ONLY) ====================
+    // ==================== REMARKS (CREATE-ONLY; ADMIN MIGRATION UPDATE) ====================
     match /remarks/{remarkId} {
       allow read: if isActiveUser();
       allow create: if isActiveUser() &&
         request.resource.data.text is string &&
         request.resource.data.text.trim().size() > 0;
-      allow update, delete: if false;
+      allow update: if isAdmin();
+      allow delete: if false;
     }
 
     // ==================== TRASH COLLECTION (ADMIN ONLY) ====================

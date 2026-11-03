@@ -261,7 +261,7 @@ export async function generateExcelWorkbook(options: ExportOptions): Promise<Blo
       // Status conditional highlighting
       if (col.key === 'status') {
         const valStr = String(cell.value).toLowerCase();
-        if (valStr.includes('joined') || valStr.includes('selected') || valStr.includes('active') || valStr.includes('completed')) {
+        if (valStr.includes('placed') || valStr.includes('joined') || valStr.includes('selected') || valStr.includes('active') || valStr.includes('completed')) {
           cell.font = { bold: true, color: { argb: 'FF065F46' } };
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
         } else if (valStr.includes('rejected') || valStr.includes('cancelled') || valStr.includes('overdue')) {

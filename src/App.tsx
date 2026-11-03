@@ -1,16 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { CRMProvider, useCRM } from './context/CRMContext';
 import { Sidebar, NavItem } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DashboardModule } from './components/dashboard/DashboardModule';
 import { CandidatesModule } from './components/candidates/CandidatesModule';
 import { ClientsModule } from './components/clients/ClientsModule';
-import { JobsModule } from './components/jobs/JobsModule';
-import { PipelineKanbanModule } from './components/pipeline/PipelineKanbanModule';
-import { InterviewsModule } from './components/interviews/InterviewsModule';
-import { SettingsModule } from './components/settings/SettingsModule';
-import { ReportsAnalyticsModule } from './components/reports/ReportsAnalyticsModule';
-import { MyTasksModule } from './components/reminders/MyTasksModule';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { AccessRestricted } from './components/common/AccessRestricted';
 
@@ -21,7 +15,43 @@ import { ScheduleInterviewModal } from './components/interviews/ScheduleIntervie
 import { CandidateProfileModal } from './components/candidates/CandidateProfileModal';
 import { StatusRemarkModal } from './components/candidates/StatusRemarkModal';
 import { Candidate, Client } from './types/crm';
-import { dataService } from './lib/dataService';
+
+// Lazy-load secondary screens for fast mobile initial load
+const JobsModule = lazy(() =>
+  import('./components/jobs/JobsModule').then((m) => ({ default: m.JobsModule }))
+);
+const PipelineKanbanModule = lazy(() =>
+  import('./components/pipeline/PipelineKanbanModule').then((m) => ({
+    default: m.PipelineKanbanModule,
+  }))
+);
+const InterviewsModule = lazy(() =>
+  import('./components/interviews/InterviewsModule').then((m) => ({
+    default: m.InterviewsModule,
+  }))
+);
+const MyTasksModule = lazy(() =>
+  import('./components/reminders/MyTasksModule').then((m) => ({
+    default: m.MyTasksModule,
+  }))
+);
+const ReportsAnalyticsModule = lazy(() =>
+  import('./components/reports/ReportsAnalyticsModule').then((m) => ({
+    default: m.ReportsAnalyticsModule,
+  }))
+);
+const SettingsModule = lazy(() =>
+  import('./components/settings/SettingsModule').then((m) => ({
+    default: m.SettingsModule,
+  }))
+);
+
+const ModuleFallback: React.FC = () => (
+  <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-600">
+    <div className="w-8 h-8 rounded-full border-3 border-[#0B1F4B] border-t-[#F5A623] animate-spin" />
+    <span className="text-xs font-bold">Loading module...</span>
+  </div>
+);
 
 const CRMAppContent: React.FC = () => {
   const {
@@ -32,6 +62,8 @@ const CRMAppContent: React.FC = () => {
     activeStatusRemarkModal,
     closeStatusRemarkModal,
     submitStatusRemark,
+    migrationNotice,
+    clearMigrationNotice,
   } = useCRM();
 
   const [currentTab, setCurrentTab] = useState<NavItem>('dashboard');
@@ -55,10 +87,10 @@ const CRMAppContent: React.FC = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="w-10 h-10 rounded-full border-3 border-[#F5A623] border-t-transparent animate-spin" />
-          <p className="text-xs font-bold text-slate-300">Connecting to BJ Bright Cloud CRM...</p>
+          <div className="w-10 h-10 rounded-full border-3 border-[#0B1F4B] border-t-[#F5A623] animate-spin" />
+          <p className="text-xs font-bold text-slate-800">Connecting to BJ Bright Cloud CRM...</p>
         </div>
       </div>
     );
@@ -66,7 +98,7 @@ const CRMAppContent: React.FC = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
         <LoginScreen />
       </div>
     );
@@ -93,8 +125,8 @@ const CRMAppContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased">
-      {/* Sidebar Navigation */}
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col antialiased overflow-x-hidden">
+      {/* Sidebar Drawer (<1024px) & Fixed Bottom Nav (<768px) */}
       <Sidebar
         currentTab={currentTab}
         onSelectTab={handleNavigate}
@@ -103,7 +135,7 @@ const CRMAppContent: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <div className="lg:pl-68 flex-1 flex flex-col min-w-0">
+      <div className="lg:pl-68 flex-1 flex flex-col min-w-0 max-w-full">
         {/* Top Header */}
         <Header
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
@@ -131,66 +163,81 @@ const CRMAppContent: React.FC = () => {
           }}
         />
 
-        {/* Dynamic Page Views */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          {currentTab === 'dashboard' && (
-            <DashboardModule
-              onNavigate={handleNavigate}
-              onOpenCandidateForm={() => setIsAddCandidateOpen(true)}
-              onOpenScheduleInterview={() => setIsScheduleInterviewOpen(true)}
-            />
-          )}
+        {/* One-time Admin Migration Banner */}
+        {migrationNotice && (
+          <div className="mx-3 sm:mx-6 lg:mx-8 mt-3 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-between gap-3 text-xs font-bold text-emerald-900 shadow-xs">
+            <span>{migrationNotice}</span>
+            <button
+              type="button"
+              onClick={clearMigrationNotice}
+              className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
-          {currentTab === 'candidates' && (
-            <CandidatesModule
-              onScheduleInterviewForCandidate={handleScheduleInterviewForCandidate}
-            />
-          )}
+        {/* Dynamic Page Views with Fluid Spacing & Safe Bottom Padding for Phone Nav */}
+        <main className="flex-1 w-full max-w-7xl mx-auto px-[clamp(0.75rem,2.5vw,2rem)] pt-[clamp(0.875rem,2vw,1.75rem)] pb-24 md:pb-8 min-w-0">
+          <Suspense fallback={<ModuleFallback />}>
+            {currentTab === 'dashboard' && (
+              <DashboardModule
+                onNavigate={handleNavigate}
+                onOpenCandidateForm={() => setIsAddCandidateOpen(true)}
+                onOpenScheduleInterview={() => setIsScheduleInterviewOpen(true)}
+              />
+            )}
 
-          {currentTab === 'clients' && (
-            <ClientsModule
-              onOpenCreateJobForClient={handleOpenCreateJobForClient}
-              initialProfileClientId={selectedClientIdForProfile}
-              onClearInitialProfileClient={() => setSelectedClientIdForProfile(undefined)}
-            />
-          )}
+            {currentTab === 'candidates' && (
+              <CandidatesModule
+                onScheduleInterviewForCandidate={handleScheduleInterviewForCandidate}
+              />
+            )}
 
-          {currentTab === 'jobs' && (
-            <JobsModule
-              onNavigateToPipeline={handleNavigateToPipeline}
-              onViewCandidateProfile={(cand) => setActiveCandidateForProfile(cand)}
-            />
-          )}
+            {currentTab === 'clients' && (
+              <ClientsModule
+                onOpenCreateJobForClient={handleOpenCreateJobForClient}
+                initialProfileClientId={selectedClientIdForProfile}
+                onClearInitialProfileClient={() => setSelectedClientIdForProfile(undefined)}
+              />
+            )}
 
-          {currentTab === 'pipeline' && (
-            <PipelineKanbanModule
-              initialJobId={preSelectedJobIdForPipeline}
-              onViewCandidateProfile={(cand) => setActiveCandidateForProfile(cand)}
-              onScheduleInterview={handleScheduleInterviewForCandidate}
-            />
-          )}
+            {currentTab === 'jobs' && (
+              <JobsModule
+                onNavigateToPipeline={handleNavigateToPipeline}
+                onViewCandidateProfile={(cand) => setActiveCandidateForProfile(cand)}
+              />
+            )}
 
-          {currentTab === 'interviews' && (
-            <InterviewsModule
-              onViewCandidateProfile={(cand) => setActiveCandidateForProfile(cand)}
-            />
-          )}
+            {currentTab === 'pipeline' && (
+              <PipelineKanbanModule
+                initialJobId={preSelectedJobIdForPipeline}
+                onViewCandidateProfile={(cand) => setActiveCandidateForProfile(cand)}
+                onScheduleInterview={handleScheduleInterviewForCandidate}
+              />
+            )}
 
-          {currentTab === 'tasks' && (
-            <MyTasksModule
-              onViewCandidateProfile={(cand) => setActiveCandidateForProfile(cand)}
-            />
-          )}
+            {currentTab === 'interviews' && (
+              <InterviewsModule
+                onViewCandidateProfile={(cand) => setActiveCandidateForProfile(cand)}
+              />
+            )}
 
-          {currentTab === 'reports' && <ReportsAnalyticsModule />}
+            {currentTab === 'tasks' && (
+              <MyTasksModule
+                onViewCandidateProfile={(cand) => setActiveCandidateForProfile(cand)}
+              />
+            )}
 
-          {currentTab === 'settings' && (
-            currentUser.role === 'admin' ? (
-              <SettingsModule />
-            ) : (
-              <AccessRestricted onNavigate={handleNavigate} />
-            )
-          )}
+            {currentTab === 'reports' && <ReportsAnalyticsModule />}
+
+            {currentTab === 'settings' &&
+              (currentUser.role === 'admin' ? (
+                <SettingsModule />
+              ) : (
+                <AccessRestricted onNavigate={handleNavigate} />
+              ))}
+          </Suspense>
         </main>
       </div>
 

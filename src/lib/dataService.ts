@@ -115,6 +115,31 @@ export function normalizeClientRecord(c: any): Client {
   };
 }
 
+// Safety net: treat any leftover "Joined" status/stage as "Placed" when reading data
+export function normalizeCandidateRecord(c: any): Candidate {
+  const normalizedStatus = (c.status as string) === 'Joined' ? 'Placed' : c.status;
+  const normalizedRemarks = Array.isArray(c.remarks)
+    ? c.remarks.map((r: any) =>
+        (r?.statusChangedTo as string) === 'Joined'
+          ? { ...r, statusChangedTo: 'Placed' }
+          : r
+      )
+    : c.remarks;
+  return {
+    ...c,
+    status: normalizedStatus,
+    ...(normalizedRemarks !== undefined ? { remarks: normalizedRemarks } : {}),
+  } as Candidate;
+}
+
+export function normalizePipelineRecord(p: any): PipelineItem {
+  const normalizedStage = (p.stage as string) === 'Joined' ? 'Placed' : p.stage;
+  return {
+    ...p,
+    stage: normalizedStage,
+  } as PipelineItem;
+}
+
 // In-memory cache updated by real-time Firestore listeners for synchronous helper access
 let cachedUsers: User[] = [];
 let cachedCandidates: Candidate[] = [];
@@ -126,18 +151,14 @@ let cachedTasks: ReminderTask[] = [];
 let cachedEditHistory: EditHistoryItem[] = [];
 let cachedActivities: ActivityLogItem[] = [];
 let cachedSettings: CompanySettings = buildSeedData().companySettings;
-let currentTheme: 'dark' | 'light' = 'light';
-
 export type SyncState = 'Synced' | 'Syncing...' | 'Offline';
 
 export const dataService = {
-  // Theme preference (UI only, not CRM data)
-  getTheme(): 'dark' | 'light' {
-    return currentTheme;
+  // Light-only theme enforced globally
+  getTheme(): 'light' {
+    return 'light';
   },
-  setTheme(theme: 'dark' | 'light'): void {
-    currentTheme = theme;
-  },
+  setTheme(_theme: 'light'): void {},
 
   // Generate a new Firestore auto-ID for a given collection
   createAutoId(collectionName: string): string {
@@ -341,7 +362,7 @@ export const dataService = {
       (snap) => {
         onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
         const list = snap.docs
-          .map((d) => ({ ...(d.data() as Candidate), id: d.id }))
+          .map((d) => normalizeCandidateRecord({ ...(d.data() as Candidate), id: d.id }))
           .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
         cachedCandidates = list;
         onData(list);
@@ -407,10 +428,12 @@ export const dataService = {
       { includeMetadataChanges: true },
       (snap) => {
         onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
-        const list = snap.docs.map((d) => ({
-          ...(d.data() as PipelineItem),
-          id: d.id,
-        }));
+        const list = snap.docs.map((d) =>
+          normalizePipelineRecord({
+            ...(d.data() as PipelineItem),
+            id: d.id,
+          })
+        );
         cachedPipeline = list;
         onData(list);
       },
@@ -1034,6 +1057,139 @@ export const dataService = {
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'settings/company');
       throw err;
+    }
+  },
+
+  // ==================== ONE-TIME ADMIN MIGRATION: JOINED -> PLACED ====================
+  /**
+   * One-time Admin-only migration that runs automatically the first time an Admin signs in.
+   * Converts in Firestore:
+   * - every candidate with status "Joined" to "Placed"
+   * - every candidate remark timeline entry with statusChangedTo "Joined" to "Placed"
+   * - every pipeline item with stage "Joined" to "Placed"
+   * - every standalone remark doc with statusChangedTo "Joined" to "Placed"
+   * Uses batches of 500, is idempotent (tracked via settings/migration_joined_to_placed_v1),
+   * does not alter any other field, and does not create editHistory entries.
+   */
+  async runJoinedToPlacedMigrationIfNeeded(
+    adminUid: string
+  ): Promise<{
+    ran: boolean;
+    updatedCount: number;
+    candidatesBefore: number;
+    candidatesAfter: number;
+  }> {
+    const flagRef = doc(db, 'settings', 'migration_joined_to_placed_v1');
+    try {
+      const flagSnap = await getDoc(flagRef);
+      if (flagSnap.exists() && flagSnap.data()?.completed === true) {
+        return {
+          ran: false,
+          updatedCount: 0,
+          candidatesBefore: cachedCandidates.length,
+          candidatesAfter: cachedCandidates.length,
+        };
+      }
+
+      const [candSnap, pipeSnap, remSnap] = await Promise.all([
+        getDocs(collection(db, 'candidates')),
+        getDocs(collection(db, 'pipeline')),
+        getDocs(collection(db, 'remarks')),
+      ]);
+
+      const candidatesBefore = candSnap.size;
+      const operations: Array<{
+        ref: ReturnType<typeof doc>;
+        data: Record<string, any>;
+      }> = [];
+
+      candSnap.docs.forEach((d) => {
+        const raw = d.data();
+        const statusNeedsUpdate = raw.status === 'Joined';
+        const remarksArr = Array.isArray(raw.remarks) ? raw.remarks : [];
+        const remarksNeedUpdate = remarksArr.some(
+          (r: any) => r && r.statusChangedTo === 'Joined'
+        );
+
+        if (statusNeedsUpdate || remarksNeedUpdate) {
+          const updatePayload: Record<string, any> = {
+            lastEditReason:
+              typeof raw.lastEditReason === 'string' && raw.lastEditReason.trim().length > 0
+                ? raw.lastEditReason
+                : 'Migrated Joined to Placed',
+          };
+          if (statusNeedsUpdate) {
+            updatePayload.status = 'Placed';
+          }
+          if (remarksNeedUpdate) {
+            updatePayload.remarks = remarksArr.map((r: any) =>
+              r && r.statusChangedTo === 'Joined'
+                ? { ...r, statusChangedTo: 'Placed' }
+                : r
+            );
+          }
+          operations.push({
+            ref: doc(db, 'candidates', d.id),
+            data: stripUndefined(updatePayload),
+          });
+        }
+      });
+
+      pipeSnap.docs.forEach((d) => {
+        const raw = d.data();
+        if (raw.stage === 'Joined') {
+          operations.push({
+            ref: doc(db, 'pipeline', d.id),
+            data: { stage: 'Placed' },
+          });
+        }
+      });
+
+      remSnap.docs.forEach((d) => {
+        const raw = d.data();
+        if (raw.statusChangedTo === 'Joined') {
+          operations.push({
+            ref: doc(db, 'remarks', d.id),
+            data: { statusChangedTo: 'Placed' },
+          });
+        }
+      });
+
+      // Commit in batches of 500
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+        const chunk = operations.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach((op) => {
+          batch.update(op.ref, op.data);
+        });
+        await batch.commit();
+      }
+
+      const candidatesAfter = candSnap.size;
+      await setDoc(flagRef, {
+        completed: true,
+        updatedCount: operations.length,
+        candidatesBefore,
+        candidatesAfter,
+        completedBy: adminUid,
+        completedAt: serverTimestamp(),
+      });
+
+      return {
+        ran: true,
+        updatedCount: operations.length,
+        candidatesBefore,
+        candidatesAfter,
+      };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/migration_joined_to_placed_v1');
+      return {
+        ran: false,
+        updatedCount: 0,
+        candidatesBefore: cachedCandidates.length,
+        candidatesAfter: cachedCandidates.length,
+      };
     }
   },
 

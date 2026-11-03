@@ -173,8 +173,8 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (isSubmitting) return;
 
     const newErrors: Record<string, string> = {};
@@ -185,7 +185,6 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
     const trimmedTerms = paymentTerms.trim();
     const today = new Date().toISOString().slice(0, 10);
 
-    // 1. Company name required (and on Edit, unique; on Add, live similarity warning requires confirmation tick)
     if (!trimmedName) {
       newErrors.name = 'Company name is required.';
     } else if (clientToEdit) {
@@ -206,7 +205,6 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
       newErrors.city = 'City is required.';
     }
 
-    // 2. Website URL (optional if left empty or default 'https://', otherwise must be valid URL)
     const hasCustomWebsite =
       trimmedWebsite.length > 0 &&
       trimmedWebsite !== 'https://' &&
@@ -215,7 +213,6 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
       newErrors.website = 'Enter a valid website or Google Maps URL (e.g. https://company.com).';
     }
 
-    // 3. Date validations (cannot be in the future except Next Follow-up Date)
     if (!enquiryDate) {
       newErrors.enquiryDate = 'Enquiry Received date is required.';
     } else if (enquiryDate > today) {
@@ -243,7 +240,6 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
       }
     }
 
-    // 4. Contact persons validation (phone 10 digits starting 6-9, valid email)
     const normalizedContacts: ClientContactPerson[] = [];
     contactPersons.forEach((cp, idx) => {
       const cpName = cp.name.trim();
@@ -275,7 +271,6 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
       }
     });
 
-    // 5. Optional first remark on Add / Compulsory edit reason on Edit
     if (!clientToEdit && initialRemark.trim().length > 0) {
       if (initialRemark.trim().length < 3 || initialRemark.trim().length > 500) {
         newErrors.initialRemark = 'First remark must be between 3 and 500 characters.';
@@ -356,36 +351,56 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
       title={clientToEdit ? 'Edit Company Details' : 'Add New Company'}
       subtitle="BJ Bright Enterprises • Corporate Client Management"
       maxWidth="3xl"
+      footer={
+        <div className="flex items-center justify-end gap-3 w-full">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[44px] px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSubmit()}
+            disabled={isSubmitting || (!clientToEdit && similarMatches.length > 0 && !confirmDuplicate)}
+            className="min-h-[44px] px-5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] disabled:opacity-50 text-white text-xs font-bold shadow-md transition-colors cursor-pointer"
+          >
+            {isSubmitting ? 'Saving...' : clientToEdit ? 'Save Changes' : 'Add Company'}
+          </button>
+        </div>
+      }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 text-slate-900">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Company Name */}
           <div className="md:col-span-2">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Company Name *
             </label>
             <input
               type="text"
+              autoComplete="organization"
               placeholder="e.g. Tata Consultancy Services (TCS), HCLTech, Jubilant FoodWorks"
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
                 setConfirmDuplicate(false);
               }}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
-            {errors.name && <p className="text-[11px] text-rose-600 font-semibold mt-1">{errors.name}</p>}
+            {errors.name && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.name}</p>}
           </div>
 
           {/* Section (Green / Blue / Red) */}
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Client Section *
             </label>
             <select
               value={section}
               onChange={(e) => setSection(e.target.value as ClientSection)}
-              className="w-full px-3 py-2 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm font-bold rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             >
               <option value="Green">GREEN — {CLIENT_SECTION_LABELS.Green} (Agreement Signed)</option>
               <option value="Blue">BLUE — {CLIENT_SECTION_LABELS.Blue} (Spoken, No Agreement Yet)</option>
@@ -395,13 +410,13 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
 
           {/* Industry */}
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Industry *
             </label>
             <select
               value={industry}
               onChange={(e) => setIndustry(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             >
               {companySettings.availableIndustries.map((ind) => (
                 <option key={ind} value={ind}>
@@ -413,51 +428,54 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
 
           {/* City */}
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               City *
             </label>
             <input
               type="text"
+              autoComplete="address-level2"
               placeholder="e.g. Noida, Greater Noida, Gurugram"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
-            {errors.city && <p className="text-[11px] text-rose-600 font-semibold mt-1">{errors.city}</p>}
+            {errors.city && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.city}</p>}
           </div>
 
           {/* Website */}
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Website URL *
             </label>
             <input
-              type="text"
+              type="url"
+              inputMode="url"
               placeholder="https://company.com"
               value={website}
               onChange={(e) => setWebsite(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
-            {errors.website && <p className="text-[11px] text-rose-600 font-semibold mt-1">{errors.website}</p>}
+            {errors.website && <p className="text-xs text-rose-600 font-semibold mt-1">{errors.website}</p>}
           </div>
 
           {/* Address */}
           <div className="md:col-span-2">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Office Address
             </label>
             <input
               type="text"
+              autoComplete="street-address"
               placeholder="e.g. Plot A-44/45, Sector 62, Noida"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
           </div>
 
           {/* Dates Row */}
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Enquiry Received Date *
             </label>
             <input
@@ -465,15 +483,15 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
               max={todayStr}
               value={enquiryDate}
               onChange={(e) => setEnquiryDate(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
             {errors.enquiryDate && (
-              <p className="text-[11px] text-rose-600 font-semibold mt-1">{errors.enquiryDate}</p>
+              <p className="text-xs text-rose-600 font-semibold mt-1">{errors.enquiryDate}</p>
             )}
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Last Contacted Date {section === 'Blue' ? '*' : ''}
             </label>
             <input
@@ -481,28 +499,28 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
               max={todayStr}
               value={lastContactedDate}
               onChange={(e) => setLastContactedDate(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
             {errors.lastContactedDate && (
-              <p className="text-[11px] text-rose-600 font-semibold mt-1">{errors.lastContactedDate}</p>
+              <p className="text-xs text-rose-600 font-semibold mt-1">{errors.lastContactedDate}</p>
             )}
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Next Follow-up Date
             </label>
             <input
               type="date"
               value={nextFollowUpDate}
               onChange={(e) => setNextFollowUpDate(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
           </div>
 
           {section === 'Green' && (
             <div>
-              <label className="text-xs font-bold text-emerald-700 dark:text-emerald-400 block mb-1">
+              <label className="text-xs font-bold text-emerald-800 block mb-1">
                 Agreement Signed Date * (Active Clients)
               </label>
               <input
@@ -511,10 +529,10 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
                 min={enquiryDate || undefined}
                 value={agreementSignedDate}
                 onChange={(e) => setAgreementSignedDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50/40 dark:bg-emerald-950/30 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-emerald-400 bg-emerald-50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
               />
               {errors.agreementSignedDate && (
-                <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                <p className="text-xs text-rose-600 font-semibold mt-1">
                   {errors.agreementSignedDate}
                 </p>
               )}
@@ -523,23 +541,24 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
 
           {/* Commission % */}
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Commission (%)
             </label>
             <input
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0"
               max="50"
               value={commissionPercent}
               onChange={(e) => setCommissionPercent(parseFloat(e.target.value) || 0)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
           </div>
 
           {/* Payment Terms */}
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Payment Terms
             </label>
             <input
@@ -547,13 +566,13 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
               placeholder="e.g. 45 days from joining date, 30 days net"
               value={paymentTerms}
               onChange={(e) => setPaymentTerms(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
           </div>
 
           {/* Company JD / Hiring Requirement Details */}
           <div className="md:col-span-2">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               Company JD / Current Hiring Requirements & Agreement Details
             </label>
             <textarea
@@ -561,73 +580,76 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
               placeholder="Enter complete Job Description (JD), Role, Eligibility & Skills, Salary & Incentives, Working Hours / Shift, Interview Timings, etc..."
               value={agreementDetails}
               onChange={(e) => setAgreementDetails(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B] leading-relaxed"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B] leading-relaxed"
             />
-            <span className="text-[10px] text-slate-400 mt-0.5 block">
+            <span className="text-xs text-slate-600 mt-1 block">
               Tip: Separate key points with "|" or new lines for clean display on the company card and profile.
             </span>
           </div>
         </div>
 
         {/* Contact Persons Subsection */}
-        <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+        <div className="pt-3 border-t border-slate-200 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <label className="text-xs font-bold text-slate-800">
               Contact Persons (Name, Designation, 10-digit Phone starting 6-9, Email) *
             </label>
             <button
               type="button"
               onClick={handleAddContact}
-              className="text-xs font-bold text-blue-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+              className="min-h-[40px] px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#0B1F4B] text-xs font-bold flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Contact Person</span>
             </button>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-3">
             {contactPersons.map((contact, idx) => (
               <div
                 key={contact.id || idx}
-                className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-1.5"
+                className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2"
               >
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-center">
                   <input
                     type="text"
                     placeholder="Person Name *"
                     value={contact.name}
                     onChange={(e) => handleUpdateContact(idx, 'name', e.target.value)}
-                    className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                    className="min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
                   />
                   <input
                     type="text"
                     placeholder="Designation"
                     value={contact.designation}
                     onChange={(e) => handleUpdateContact(idx, 'designation', e.target.value)}
-                    className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                    className="min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
                   />
                   <input
-                    type="text"
+                    type="tel"
+                    inputMode="tel"
                     placeholder="10-digit Phone (6-9) *"
                     value={contact.phone}
                     onChange={(e) => handleUpdateContact(idx, 'phone', e.target.value)}
-                    className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                    className="min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
                   />
                   <div className="flex items-center gap-1.5">
                     <input
                       type="email"
+                      inputMode="email"
                       placeholder="Email *"
                       value={contact.email}
                       onChange={(e) => handleUpdateContact(idx, 'email', e.target.value)}
-                      className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                      className="flex-1 min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900"
                     />
                     {contactPersons.length > 1 && (
                       <button
                         type="button"
                         onClick={() => handleRemoveContact(idx)}
-                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                        className="w-11 h-11 flex items-center justify-center text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer shrink-0"
+                        title="Remove contact"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                   </div>
@@ -635,7 +657,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
                 {(errors[`cp_name_${idx}`] ||
                   errors[`cp_phone_${idx}`] ||
                   errors[`cp_email_${idx}`]) && (
-                  <div className="flex flex-wrap gap-3 text-[11px] text-rose-600 font-semibold">
+                  <div className="flex flex-wrap gap-3 text-xs text-rose-600 font-semibold">
                     {errors[`cp_name_${idx}`] && <span>• {errors[`cp_name_${idx}`]}</span>}
                     {errors[`cp_phone_${idx}`] && <span>• {errors[`cp_phone_${idx}`]}</span>}
                     {errors[`cp_email_${idx}`] && <span>• {errors[`cp_email_${idx}`]}</span>}
@@ -648,14 +670,14 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
 
         {/* Live Duplicate / Similar Company Warning (when adding a new company) */}
         {!clientToEdit && similarMatches.length > 0 && (
-          <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 space-y-2.5">
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 space-y-2.5">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="text-xs">
-                <p className="font-extrabold text-amber-950 dark:text-amber-200">
+                <p className="font-extrabold text-amber-950">
                   Similar or matching company already exists ({similarMatches.length} found)
                 </p>
-                <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+                <p className="text-xs text-amber-900 mt-0.5">
                   Please check the existing company below before adding a duplicate record.
                 </p>
               </div>
@@ -668,11 +690,11 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
                 return (
                   <div
                     key={client.id}
-                    className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800/80 flex items-center justify-between gap-3 text-xs"
+                    className="p-2.5 rounded-lg bg-white border border-amber-200 flex items-center justify-between gap-3 text-xs"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-slate-900 dark:text-white truncate">
+                        <span className="font-bold text-slate-900 truncate">
                           {client.name}
                         </span>
                         <span
@@ -681,12 +703,12 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
                           <span className={`w-1.5 h-1.5 rounded-full ${badge.dotClass}`} />
                           {badge.label}
                         </span>
-                        <span className="text-[11px] text-slate-500">{client.city}</span>
+                        <span className="text-xs text-slate-600">{client.city}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
+                      <p className="text-xs text-slate-600 mt-0.5">
                         Contact: {mainContact?.name || '-'} ({mainContact?.phone || '-'})
                       </p>
-                      <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 mt-0.5">
+                      <p className="text-xs font-semibold text-amber-800 mt-0.5">
                         Match: {reasons.join(' • ')}
                       </p>
                     </div>
@@ -695,10 +717,10 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
                       <button
                         type="button"
                         onClick={() => onOpenExistingClient(client)}
-                        className="px-2.5 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white text-[11px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                        className="min-h-[40px] px-3 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer"
                       >
                         <span>Open Profile</span>
-                        <ExternalLink className="w-3 h-3" />
+                        <ExternalLink className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -706,7 +728,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
               })}
             </div>
 
-            <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+            <label className="flex items-center gap-2.5 pt-1 cursor-pointer select-none min-h-[44px]">
               <input
                 type="checkbox"
                 checked={confirmDuplicate}
@@ -720,22 +742,22 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
                     });
                   }
                 }}
-                className="w-4 h-4 rounded border-amber-400 text-[#0B1F4B] focus:ring-[#0B1F4B]"
+                className="w-5 h-5 rounded border-amber-400 text-[#0B1F4B] focus:ring-[#0B1F4B]"
               />
-              <span className="text-xs font-bold text-amber-950 dark:text-amber-200">
+              <span className="text-xs font-bold text-amber-950">
                 I confirm this is a separate company and want to add it anyway *
               </span>
             </label>
             {errors.confirmDuplicate && (
-              <p className="text-[11px] text-rose-600 font-semibold">{errors.confirmDuplicate}</p>
+              <p className="text-xs text-rose-600 font-semibold">{errors.confirmDuplicate}</p>
             )}
           </div>
         )}
 
         {/* Optional First Remark (when adding) OR Compulsory Reason for Edit (when editing) */}
         {!clientToEdit ? (
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          <div className="pt-2 border-t border-slate-200">
+            <label className="text-xs font-bold text-slate-800 block mb-1">
               First Remark (Optional — 3 to 500 characters)
             </label>
             <textarea
@@ -744,15 +766,15 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
               placeholder="e.g. Spoke with HR Head regarding Q4 hiring requirements..."
               value={initialRemark}
               onChange={(e) => setInitialRemark(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
             {errors.initialRemark && (
-              <p className="text-[11px] text-rose-600 font-semibold mt-1">{errors.initialRemark}</p>
+              <p className="text-xs text-rose-600 font-semibold mt-1">{errors.initialRemark}</p>
             )}
           </div>
         ) : (
-          <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-            <label className="text-xs font-bold text-amber-950 dark:text-amber-300 flex items-center gap-1.5 mb-1">
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300">
+            <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5 mb-1">
               <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
               <span>Reason for this edit * (Minimum 10 characters — saved permanently in Edit History)</span>
             </label>
@@ -761,40 +783,22 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
               placeholder="Describe why these company details are being updated (minimum 10 characters)..."
               value={editReason}
               onChange={(e) => setEditReason(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-amber-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
             <div className="flex items-center justify-between mt-1">
               {errors.editReason ? (
-                <p className="text-[11px] text-rose-600 font-semibold">{errors.editReason}</p>
+                <p className="text-xs text-rose-600 font-semibold">{errors.editReason}</p>
               ) : (
-                <span className="text-[10px] text-slate-500">
+                <span className="text-xs text-slate-600">
                   Recorded permanently with your name, timestamp, old value, and new value.
                 </span>
               )}
-              <span className="text-[10px] font-mono text-slate-400">
+              <span className="text-xs font-mono text-slate-600">
                 {editReason.trim().length}/10 min
               </span>
             </div>
           </div>
         )}
-
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting || (!clientToEdit && similarMatches.length > 0 && !confirmDuplicate)}
-            className="px-5 py-2 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] disabled:opacity-50 text-white text-xs font-bold shadow-md transition-colors cursor-pointer"
-          >
-            {isSubmitting ? 'Saving...' : clientToEdit ? 'Save Changes' : 'Add Company'}
-          </button>
-        </div>
       </form>
     </Modal>
   );

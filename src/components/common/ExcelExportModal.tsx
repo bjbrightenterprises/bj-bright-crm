@@ -9,7 +9,6 @@ import {
   Loader2,
   Filter,
   Layers,
-  Sparkles,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import { ExportColumnDef, generateExcelWorkbook, triggerFileDownload, getStandardExportFileName } from '../../lib/excelExport';
@@ -39,14 +38,13 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
   filtersDescription = 'Current search and category filters',
   summaryGenerator,
 }) => {
-  const { currentUser, logExport } = useCRM();
+  const { currentUser, logExport, showToast } = useCRM();
 
   const [scope, setScope] = useState<'filtered' | 'all'>('filtered');
   const [selectedKeys, setSelectedKeys] = useState<string[]>(() => columns.map((c) => c.key));
   const [isExporting, setIsExporting] = useState(false);
   const [progressText, setProgressText] = useState('');
 
-  // Reset when opened
   React.useEffect(() => {
     if (isOpen) {
       setSelectedKeys(columns.map((c) => c.key));
@@ -69,7 +67,7 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
 
   const handleToggleColumn = (key: string) => {
     if (selectedKeys.includes(key)) {
-      if (selectedKeys.length === 1) return; // Keep at least one
+      if (selectedKeys.length === 1) return;
       setSelectedKeys(selectedKeys.filter((k) => k !== key));
     } else {
       setSelectedKeys([...selectedKeys, key]);
@@ -81,7 +79,6 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
       setIsExporting(true);
       setProgressText('Preparing dataset and sanitizing fields...');
 
-      // Small async tick for UI responsiveness
       await new Promise((r) => setTimeout(r, 60));
 
       setProgressText(`Generating ${moduleName} workbook with Excel Table & Summary formulas...`);
@@ -101,17 +98,47 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
       const fileName = getStandardExportFileName(moduleName);
       triggerFileDownload(blob, fileName);
 
-      // Audit log entry
       logExport(moduleName, targetData.length, scope, scope === 'filtered' ? filtersDescription : undefined);
 
       setIsExporting(false);
       onClose();
     } catch (err: any) {
       console.error('Export error:', err);
-      alert(`Export failed: ${err.message || 'Unknown error'}`);
+      showToast(`Export failed: ${err.message || 'Unknown error'}`, 'error');
       setIsExporting(false);
     }
   };
+
+  const footerContent = (
+    <div className="flex items-center justify-end gap-3 w-full">
+      <button
+        type="button"
+        disabled={isExporting}
+        onClick={onClose}
+        className="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        disabled={isExporting || selectedKeys.length === 0}
+        onClick={handleExecuteExport}
+        className="min-h-[44px] px-5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white text-xs font-extrabold flex items-center gap-2 shadow-md disabled:opacity-50 cursor-pointer transition-all"
+      >
+        {isExporting ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin text-[#F5A623]" />
+            <span>Exporting...</span>
+          </>
+        ) : (
+          <>
+            <Download className="w-4 h-4 text-[#F5A623]" />
+            <span>Download .xlsx ({targetData.length} Rows)</span>
+          </>
+        )}
+      </button>
+    </div>
+  );
 
   return (
     <Modal
@@ -119,16 +146,17 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
       onClose={() => !isExporting && onClose()}
       title={`Export ${moduleName} to Excel (.xlsx)`}
       maxWidth="lg"
+      footer={footerContent}
     >
-      <div className="space-y-5 text-xs text-slate-700 dark:text-slate-300">
+      <div className="space-y-5 text-xs text-slate-700">
         {/* Analyst Info Banner */}
-        <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex items-start gap-3">
-          <FileSpreadsheet className="w-5 h-5 text-[#0B1F4B] dark:text-amber-400 shrink-0 mt-0.5" />
+        <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 flex items-start gap-3">
+          <FileSpreadsheet className="w-5 h-5 text-[#0B1F4B] shrink-0 mt-0.5" />
           <div className="text-xs">
-            <p className="font-extrabold text-[#0B1F4B] dark:text-amber-400">
+            <p className="font-extrabold text-[#0B1F4B]">
               Analyst-Grade Excel (.xlsx) Export
             </p>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-700 mt-0.5">
               Generates genuine OOXML Excel with frozen headers, automatic filter dropdowns, live dynamic COUNTIFS/SUMIFS formulas on Summary sheet, and Data Dictionary on About sheet.
             </p>
           </div>
@@ -136,23 +164,23 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
 
         {/* 1. Scope Selection */}
         <div className="space-y-2">
-          <label className="font-extrabold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] block">
+          <label className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] block">
             1. Select Export Scope
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setScope('filtered')}
-              className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+              className={`p-3.5 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
                 scope === 'filtered'
-                  ? 'border-[#0B1F4B] bg-blue-50/40 dark:bg-blue-950/30 text-[#0B1F4B] dark:text-amber-300 font-bold ring-1 ring-[#0B1F4B]'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'
+                  ? 'border-[#0B1F4B] bg-blue-50/70 text-[#0B1F4B] font-bold ring-1 ring-[#0B1F4B]'
+                  : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'
               }`}
             >
-              <Filter className="w-4 h-4 mt-0.5 text-blue-600 dark:text-amber-400 shrink-0" />
+              <Filter className="w-4 h-4 mt-0.5 text-[#0B1F4B] shrink-0" />
               <div>
-                <p className="font-bold">Current Filtered View</p>
-                <p className="text-[11px] font-normal text-slate-500 mt-0.5">
+                <p className="font-bold text-slate-900">Current Filtered View</p>
+                <p className="text-[11px] font-normal text-slate-600 mt-0.5">
                   Exports {filteredData.length} active matching records based on your current filters and search.
                 </p>
               </div>
@@ -161,16 +189,16 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
             <button
               type="button"
               onClick={() => setScope('all')}
-              className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+              className={`p-3.5 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
                 scope === 'all'
-                  ? 'border-[#0B1F4B] bg-blue-50/40 dark:bg-blue-950/30 text-[#0B1F4B] dark:text-amber-300 font-bold ring-1 ring-[#0B1F4B]'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'
+                  ? 'border-[#0B1F4B] bg-blue-50/70 text-[#0B1F4B] font-bold ring-1 ring-[#0B1F4B]'
+                  : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'
               }`}
             >
-              <Layers className="w-4 h-4 mt-0.5 text-blue-600 dark:text-amber-400 shrink-0" />
+              <Layers className="w-4 h-4 mt-0.5 text-[#0B1F4B] shrink-0" />
               <div>
-                <p className="font-bold">All Records I Can Access</p>
-                <p className="text-[11px] font-normal text-slate-500 mt-0.5">
+                <p className="font-bold text-slate-900">All Records I Can Access</p>
+                <p className="text-[11px] font-normal text-slate-600 mt-0.5">
                   Exports all {allAccessibleData.length} records permitted by your {currentUser.role.toUpperCase()} role permissions.
                 </p>
               </div>
@@ -180,8 +208,8 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
 
         {/* Large Data Warning */}
         {isLargeData && (
-          <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <div className="text-[11px]">
               <span className="font-bold">Large Dataset Warning: </span>
               Exporting more than 10,000 records ({targetData.length} rows selected). This may take a few seconds and consume daily Firestore read quotas.
@@ -192,13 +220,13 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
         {/* 2. Column Selection */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="font-extrabold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">
+            <label className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px]">
               2. Select Columns ({selectedKeys.length} of {columns.length} selected)
             </label>
             <button
               type="button"
               onClick={handleToggleSelectAll}
-              className="text-blue-600 dark:text-amber-400 font-bold hover:underline flex items-center gap-1 cursor-pointer text-xs"
+              className="min-h-[36px] px-2 text-[#0B1F4B] font-bold hover:underline flex items-center gap-1 cursor-pointer text-xs"
             >
               {selectedKeys.length === columns.length ? (
                 <>
@@ -212,26 +240,26 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
             </button>
           </div>
 
-          <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 max-h-52 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 max-h-56 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
             {columns.map((col) => {
               const isChecked = selectedKeys.includes(col.key);
               return (
                 <label
                   key={col.key}
-                  className={`flex items-center gap-2 p-1.5 rounded-lg text-xs cursor-pointer select-none transition-colors ${
+                  className={`flex items-center gap-2.5 p-2 min-h-[40px] rounded-lg text-xs cursor-pointer select-none transition-colors border ${
                     isChecked
-                      ? 'bg-white dark:bg-slate-700 shadow-2xs font-semibold text-slate-900 dark:text-white'
-                      : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      ? 'bg-white border-slate-200 shadow-2xs font-semibold text-slate-900'
+                      : 'border-transparent text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <input
                     type="checkbox"
                     checked={isChecked}
                     onChange={() => handleToggleColumn(col.key)}
-                    className="w-3.5 h-3.5 rounded text-[#0B1F4B] accent-[#0B1F4B]"
+                    className="w-4 h-4 rounded text-[#0B1F4B] accent-[#0B1F4B]"
                   />
                   <span className="truncate">{col.header}</span>
-                  <span className="text-[10px] text-slate-400 ml-auto font-normal">[{col.dataType}]</span>
+                  <span className="text-[10px] text-slate-500 ml-auto font-normal">[{col.dataType}]</span>
                 </label>
               );
             })}
@@ -240,46 +268,16 @@ export const ExcelExportModal: React.FC<ExcelExportModalProps> = ({
 
         {/* Progress Display */}
         {isExporting && (
-          <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-center space-y-2 animate-pulse">
-            <div className="flex items-center justify-center gap-2 font-bold text-slate-800 dark:text-slate-200">
-              <Loader2 className="w-4 h-4 animate-spin text-[#F5A623]" />
+          <div className="p-4 rounded-xl bg-slate-100 text-center space-y-2 animate-pulse">
+            <div className="flex items-center justify-center gap-2 font-bold text-slate-900">
+              <Loader2 className="w-4 h-4 animate-spin text-[#0B1F4B]" />
               <span>{progressText}</span>
             </div>
-            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-              <div className="bg-[#0B1F4B] dark:bg-[#F5A623] h-1.5 rounded-full w-2/3 animate-ping" />
+            <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+              <div className="bg-[#0B1F4B] h-1.5 rounded-full w-2/3 animate-ping" />
             </div>
           </div>
         )}
-
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            disabled={isExporting}
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={isExporting || selectedKeys.length === 0}
-            onClick={handleExecuteExport}
-            className="px-5 py-2 rounded-xl bg-[#0B1F4B] hover:bg-[#163270] text-white font-extrabold flex items-center gap-2 shadow-md disabled:opacity-50 cursor-pointer transition-all"
-          >
-            {isExporting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-[#F5A623]" />
-                <span>Exporting...</span>
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4 text-[#F5A623]" />
-                <span>Download .xlsx ({targetData.length} Rows)</span>
-              </>
-            )}
-          </button>
-        </div>
       </div>
     </Modal>
   );
