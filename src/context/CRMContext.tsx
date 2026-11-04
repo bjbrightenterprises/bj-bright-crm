@@ -26,6 +26,10 @@ import {
 import { INITIAL_USERS, buildSeedData } from '../lib/mockData';
 import { dataService, SyncState } from '../lib/dataService';
 import { auth, FIREBASE_CONFIG, FirebaseConfig } from '../lib/firebase';
+import {
+  findMatchingExistingProfile,
+  toTitleCaseWorkProfile,
+} from '../lib/workProfiles';
 
 interface CRMContextType {
   // Firebase Auth & Sync State
@@ -607,6 +611,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: autoId,
       assignedRecruiterId: c.assignedRecruiterId || currentUser.id,
       assignedRecruiterName: c.assignedRecruiterName || currentUser.name,
+      entryDate: nowIso,
+      enteredBy: currentUser.name,
+      enteredByUserId: currentUser.id,
+      workProfile: c.workProfile ? c.workProfile.trim() : undefined,
+      workProfileIsCustom: Boolean(c.workProfileIsCustom),
       notes: [],
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -621,15 +630,23 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const old = candidates.find((c) => c.id === id);
     if (!old) return;
 
+    const isAdminUser = currentUser.role === 'admin';
+    const effectiveUpdates: Partial<Candidate> = { ...updates };
+    if (!isAdminUser) {
+      delete effectiveUpdates.entryDate;
+      delete effectiveUpdates.enteredBy;
+      delete effectiveUpdates.enteredByUserId;
+    }
+
     const cleanReason = reason && reason.trim().length > 0 ? reason.trim() : 'Candidate updated details';
     const changes: { field: string; oldValue: any; newValue: any }[] = [];
-    Object.keys(updates).forEach((key) => {
+    Object.keys(effectiveUpdates).forEach((key) => {
       const k = key as keyof Candidate;
-      if (JSON.stringify(old[k]) !== JSON.stringify(updates[k])) {
+      if (JSON.stringify(old[k]) !== JSON.stringify(effectiveUpdates[k])) {
         changes.push({
           field: k,
           oldValue: old[k],
-          newValue: updates[k],
+          newValue: effectiveUpdates[k],
         });
       }
     });
@@ -640,9 +657,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updatedAt = new Date().toISOString();
     setCandidates((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt } : c))
+      prev.map((c) => (c.id === id ? { ...c, ...effectiveUpdates, updatedAt } : c))
     );
-    dataService.updateCandidateDoc(id, { ...updates, updatedAt }, cleanReason).catch(() => {});
+    dataService
+      .updateCandidateDoc(id, { ...effectiveUpdates, updatedAt }, cleanReason, isAdminUser)
+      .catch(() => {});
     logActivity('candidate', 'Candidate Updated', `Updated profile for ${old.fullName}. Reason: ${cleanReason}`);
   };
 
@@ -896,8 +915,33 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let skipped = 0;
 
     records.forEach((r) => {
+      const rawWorkProfile = r.data.workProfile ? String(r.data.workProfile).trim() : '';
+      let resolvedWorkProfile: string | undefined;
+      let resolvedIsCustom: boolean | undefined;
+      if (rawWorkProfile) {
+        const existingMatch = findMatchingExistingProfile(
+          rawWorkProfile,
+          companySettings.workProfileCategories
+        );
+        if (existingMatch) {
+          resolvedWorkProfile = existingMatch.name;
+          resolvedIsCustom = false;
+        } else {
+          resolvedWorkProfile = toTitleCaseWorkProfile(rawWorkProfile);
+          resolvedIsCustom = true;
+        }
+      }
+
       if (r.isUpdate && r.existingId) {
-        updateCandidate(r.existingId, r.data, updateReason);
+        const updatePayload: Partial<Candidate> = { ...r.data };
+        delete updatePayload.entryDate;
+        delete updatePayload.enteredBy;
+        delete updatePayload.enteredByUserId;
+        if (resolvedWorkProfile) {
+          updatePayload.workProfile = resolvedWorkProfile;
+          updatePayload.workProfileIsCustom = resolvedIsCustom;
+        }
+        updateCandidate(r.existingId, updatePayload, updateReason);
         updated++;
       } else if (!r.isUpdate && r.data.fullName && (r.data.phone || r.data.email)) {
         const assignedId =
@@ -933,6 +977,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           assignedRecruiterName: assignedName,
           status:
             ((r.data.status as string) === 'Joined' ? 'Placed' : (r.data.status as any)) || 'New',
+          workProfile: resolvedWorkProfile,
+          workProfileIsCustom: resolvedIsCustom,
           jobTitle: r.data.jobTitle,
           clientName: r.data.clientName,
           expectedJoiningDate: r.data.expectedJoiningDate,
@@ -1240,6 +1286,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 email: 'hr@example.com',
               },
             ],
+            hiringRequirements: item.hiringRequirements,
             agreementDetails: (item.agreementDetails || 'Standard SLA').trim(),
             commissionPercent: Number(item.commissionPercent) || 8.33,
             paymentTerms: (item.paymentTerms || '30 days net').trim(),

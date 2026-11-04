@@ -1,19 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import {
   Client,
   ClientContactPerson,
   ClientSection,
+  CompanyHiringRequirement,
   CLIENT_SECTION_LABELS,
   getClientSection,
   sectionToClientStatus,
 } from '../../types/crm';
 import { useCRM } from '../../context/CRMContext';
-import { Plus, Trash2, AlertCircle, ExternalLink, AlertTriangle } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  AlertCircle,
+  ExternalLink,
+  AlertTriangle,
+  Briefcase,
+} from 'lucide-react';
 import {
   findSimilarCompanies,
   getSectionBadgeMeta,
+  getDefaultHiringRequirementsForCompany,
 } from '../../lib/companySearch';
+import {
+  ensureWorkProfileCategories,
+  getAllFlatWorkProfiles,
+  validateCustomWorkProfile,
+  findMatchingExistingProfile,
+} from '../../lib/workProfiles';
 
 interface ClientFormModalProps {
   isOpen: boolean;
@@ -63,7 +78,26 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
     },
   ]);
 
+  const [hiringRequirements, setHiringRequirements] = useState<
+    Array<CompanyHiringRequirement & { customProfileText?: string }>
+  >([]);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const workProfileCategories = useMemo(
+    () => ensureWorkProfileCategories(companySettings.workProfileCategories),
+    [companySettings.workProfileCategories]
+  );
+
+  const flatMasterProfileNames = useMemo(
+    () =>
+      new Set(
+        getAllFlatWorkProfiles(workProfileCategories, true)
+          .map((p) => p.name)
+          .filter((n) => n.toLowerCase() !== 'other')
+      ),
+    [workProfileCategories]
+  );
 
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -91,6 +125,21 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
           ? clientToEdit.contactPersons
           : [{ id: 'cp_1', name: '', designation: 'HR Lead', phone: '', email: '' }]
       );
+      const sourceReqs =
+        Array.isArray(clientToEdit.hiringRequirements) &&
+        clientToEdit.hiringRequirements.length > 0
+          ? clientToEdit.hiringRequirements
+          : getDefaultHiringRequirementsForCompany(clientToEdit);
+      setHiringRequirements(
+        sourceReqs.map((r) => {
+          const isMaster = flatMasterProfileNames.has(r.profile);
+          return {
+            ...r,
+            profile: isMaster ? r.profile : 'Other',
+            customProfileText: isMaster ? '' : r.profile,
+          };
+        })
+      );
       setInitialRemark('');
       setEditReason('');
       setConfirmDuplicate(false);
@@ -110,15 +159,44 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
       setPaymentTerms('45 days from candidate joining date');
       setAssignedAccountManagerId(currentUser.id);
       setContactPersons([{ id: 'cp_1', name: '', designation: 'HR Lead', phone: '', email: '' }]);
+      setHiringRequirements([
+        {
+          id: `req_${Date.now()}`,
+          profile: 'Telecaller (Outbound)',
+          customProfileText: '',
+          location: 'Noida',
+          salaryMin: 15000,
+          salaryMax: 18000,
+          extras: '+ incentives + ESI as applicable',
+          openings: 2,
+          gender: 'Any',
+          ageRange: '18 to 32 years',
+          qualification: '12th Pass / Graduate',
+          experience: 'Freshers and experienced can apply',
+          communication: 'Good communication skills',
+          esi: 'As applicable',
+          attendanceBonus: '',
+          incentives: 'Performance incentives',
+          weeklyOff: 'Sunday fixed weekly off',
+          workingHours: '9:30 AM to 6:30 PM',
+          interviewTiming: '11:00 AM to 4:30 PM',
+        },
+      ]);
       setInitialRemark('');
       setEditReason('');
       setConfirmDuplicate(false);
     }
     setErrors({});
     setIsSubmitting(false);
-  }, [clientToEdit, isOpen, initialName, currentUser, companySettings.availableIndustries]);
+  }, [
+    clientToEdit,
+    isOpen,
+    initialName,
+    currentUser,
+    companySettings.availableIndustries,
+    flatMasterProfileNames,
+  ]);
 
-  // Live check for same or similar company name, phone, or email
   const similarMatches = React.useMemo(() => {
     if (clientToEdit) return [];
     return findSimilarCompanies(
@@ -159,6 +237,47 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
   const handleRemoveContact = (index: number) => {
     if (contactPersons.length <= 1) return;
     setContactPersons(contactPersons.filter((_, i) => i !== index));
+  };
+
+  const handleAddRequirementRow = () => {
+    setHiringRequirements((prev) => [
+      ...prev,
+      {
+        id: `req_${Date.now()}_${prev.length}`,
+        profile: 'Telecaller (Outbound)',
+        customProfileText: '',
+        location: address && city ? `${address}, ${city}` : city || 'Noida',
+        salaryMin: 15000,
+        salaryMax: 18000,
+        extras: '',
+        openings: 1,
+        gender: 'Any',
+        ageRange: '18 to 32 years',
+        qualification: '12th Pass / Graduate',
+        experience: 'Freshers and experienced can apply',
+        communication: 'Good communication skills',
+        esi: 'As applicable',
+        attendanceBonus: '',
+        incentives: '',
+        weeklyOff: 'Sunday fixed weekly off',
+        workingHours: '9:30 AM to 6:30 PM',
+        interviewTiming: '11:00 AM to 4:30 PM',
+      },
+    ]);
+  };
+
+  const handleUpdateRequirementRow = (
+    idx: number,
+    updates: Partial<CompanyHiringRequirement & { customProfileText?: string }>
+  ) => {
+    setHiringRequirements((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, ...updates } : item))
+    );
+  };
+
+  const handleRemoveRequirementRow = (idx: number) => {
+    if (hiringRequirements.length <= 1) return;
+    setHiringRequirements((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const isValidUrl = (urlStr: string): boolean => {
@@ -245,7 +364,8 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
       const cpName = cp.name.trim();
       const cpDesignation = cp.designation.trim() || 'HR Contact';
       const rawDigits = cp.phone.replace(/\D/g, '');
-      const phone10 = rawDigits.length === 12 && rawDigits.startsWith('91') ? rawDigits.slice(2) : rawDigits;
+      const phone10 =
+        rawDigits.length === 12 && rawDigits.startsWith('91') ? rawDigits.slice(2) : rawDigits;
       const cpEmail = cp.email.trim().toLowerCase();
 
       if (!cpName && idx === 0) {
@@ -269,6 +389,64 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
           email: cpEmail,
         });
       }
+    });
+
+    const normalizedRequirements: CompanyHiringRequirement[] = [];
+    hiringRequirements.forEach((req, idx) => {
+      let finalProf = req.profile;
+      let isCustom = false;
+
+      if (req.profile === 'Other') {
+        const customRaw = req.customProfileText || '';
+        const matchExisting = findMatchingExistingProfile(customRaw, workProfileCategories);
+        if (matchExisting) {
+          finalProf = matchExisting.name;
+          isCustom = false;
+        } else {
+          const val = validateCustomWorkProfile(customRaw);
+          if (!val.valid) {
+            newErrors[`req_profile_${idx}`] = val.error || 'Type a valid custom work profile.';
+          } else {
+            finalProf = val.formatted;
+            isCustom = true;
+          }
+        }
+      }
+
+      if (!req.location.trim()) {
+        newErrors[`req_loc_${idx}`] = 'Location is required.';
+      }
+
+      const sMin = Number(req.salaryMin);
+      const sMax = Number(req.salaryMax);
+      if (isNaN(sMin) || isNaN(sMax) || sMin < 0 || sMax < 0) {
+        newErrors[`req_sal_${idx}`] = 'Salary Min and Max must be numbers in Rs per month.';
+      } else if (sMin > sMax) {
+        newErrors[`req_sal_${idx}`] = 'Salary Min cannot be greater than Salary Max.';
+      }
+
+      const cleanReq: CompanyHiringRequirement = {
+        id: req.id || `req_${Date.now()}_${idx}`,
+        profile: finalProf,
+        profileIsCustom: isCustom,
+        location: req.location.trim(),
+        salaryMin: Math.round(sMin || 0),
+        salaryMax: Math.round(sMax || 0),
+        extras: (req.extras || '').trim(),
+        openings: Math.max(1, Number(req.openings) || 1),
+        gender: (req.gender || '').trim(),
+        ageRange: (req.ageRange || '').trim(),
+        qualification: (req.qualification || '').trim(),
+        experience: (req.experience || '').trim(),
+        communication: (req.communication || '').trim(),
+        esi: (req.esi || '').trim(),
+        attendanceBonus: (req.attendanceBonus || '').trim(),
+        incentives: (req.incentives || '').trim(),
+        weeklyOff: (req.weeklyOff || '').trim(),
+        workingHours: (req.workingHours || '').trim(),
+        interviewTiming: (req.interviewTiming || '').trim(),
+      };
+      normalizedRequirements.push(cleanReq);
     });
 
     if (!clientToEdit && initialRemark.trim().length > 0) {
@@ -313,6 +491,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
           assignedAccountManagerId,
           assignedAccountManagerName: assignedUser?.name || currentUser.name,
           contactPersons: normalizedContacts,
+          hiringRequirements: normalizedRequirements,
         },
         editReason.trim()
       );
@@ -336,6 +515,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
           assignedAccountManagerId,
           assignedAccountManagerName: assignedUser?.name || currentUser.name,
           contactPersons: normalizedContacts,
+          hiringRequirements: normalizedRequirements,
         },
         initialRemark.trim()
       );
@@ -381,7 +561,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
             <input
               type="text"
               autoComplete="organization"
-              placeholder="e.g. Tata Consultancy Services (TCS), HCLTech, Jubilant FoodWorks"
+              placeholder="e.g. Smile India Trust, HCLTech, MyMoneyMantra"
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -445,7 +625,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
           {/* Website */}
           <div>
             <label className="text-xs font-bold text-slate-800 block mb-1">
-              Website URL *
+              Website / Map URL
             </label>
             <input
               type="url"
@@ -466,7 +646,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
             <input
               type="text"
               autoComplete="street-address"
-              placeholder="e.g. Plot A-44/45, Sector 62, Noida"
+              placeholder="e.g. A-100, Sector 4, near Sector 16 Metro Station, Noida"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
@@ -569,22 +749,199 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
               className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
           </div>
+        </div>
 
-          {/* Company JD / Hiring Requirement Details */}
-          <div className="md:col-span-2">
-            <label className="text-xs font-bold text-slate-800 block mb-1">
-              Company JD / Current Hiring Requirements & Agreement Details
-            </label>
-            <textarea
-              rows={4}
-              placeholder="Enter complete Job Description (JD), Role, Eligibility & Skills, Salary & Incentives, Working Hours / Shift, Interview Timings, etc..."
-              value={agreementDetails}
-              onChange={(e) => setAgreementDetails(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B] leading-relaxed"
-            />
-            <span className="text-xs text-slate-600 mt-1 block">
-              Tip: Separate key points with "|" or new lines for clean display on the company card and profile.
-            </span>
+        {/* Hiring Requirements on Company (Call Summary Block fields) */}
+        <div className="pt-3 border-t border-slate-200 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <label className="text-xs font-extrabold text-[#0B1F4B] flex items-center gap-1.5">
+                <Briefcase className="w-4 h-4 text-[#F5A623]" />
+                <span>Call Summary & Hiring Requirements (Profile, Location, Monthly Salary, Extras)</span>
+              </label>
+              <p className="text-[11px] text-slate-600">
+                Shown at the very top of the company card and profile for phone calls.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddRequirementRow}
+              className="min-h-[38px] px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#0B1F4B] text-xs font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Requirement Row</span>
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {hiringRequirements.map((req, idx) => (
+              <div
+                key={req.id || idx}
+                className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-[#0B1F4B]">
+                    Requirement #{idx + 1}
+                  </span>
+                  {hiringRequirements.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRequirementRow(idx)}
+                      className="text-rose-600 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  <div className="sm:col-span-2">
+                    <label className="font-bold text-slate-800 block mb-1">
+                      Work Profile *
+                    </label>
+                    <select
+                      value={req.profile}
+                      onChange={(e) =>
+                        handleUpdateRequirementRow(idx, { profile: e.target.value })
+                      }
+                      className="w-full min-h-[42px] px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-900"
+                    >
+                      {workProfileCategories
+                        .filter((c) => c.active)
+                        .map((cat) => (
+                          <optgroup key={cat.id} label={cat.name}>
+                            {cat.profiles
+                              .filter((p) => p.active)
+                              .map((p) => (
+                                <option key={p.id} value={p.name}>
+                                  {p.name}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-800 block mb-1">
+                      Openings
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={req.openings || 1}
+                      onChange={(e) =>
+                        handleUpdateRequirementRow(idx, {
+                          openings: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                      className="w-full min-h-[42px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
+                    />
+                  </div>
+
+                  {req.profile === 'Other' && (
+                    <div className="sm:col-span-3">
+                      <label className="font-bold text-slate-800 block mb-1">
+                        Type the work profile * (2–60 chars, stored in Title Case)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Client Relationship Associate (CRA) - Outbound Telecalling"
+                        value={req.customProfileText || ''}
+                        onChange={(e) =>
+                          handleUpdateRequirementRow(idx, {
+                            customProfileText: e.target.value,
+                          })
+                        }
+                        className="w-full min-h-[42px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
+                      />
+                      {errors[`req_profile_${idx}`] && (
+                        <p className="text-xs text-rose-600 font-semibold mt-1">
+                          {errors[`req_profile_${idx}`]}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="sm:col-span-3">
+                    <label className="font-bold text-slate-800 block mb-1">
+                      Work Location (City and Area / Address) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. A-100, Sector 4, near Sector 16 Metro Station, Noida"
+                      value={req.location}
+                      onChange={(e) =>
+                        handleUpdateRequirementRow(idx, { location: e.target.value })
+                      }
+                      className="w-full min-h-[42px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
+                    />
+                    {errors[`req_loc_${idx}`] && (
+                      <p className="text-xs text-rose-600 font-semibold mt-1">
+                        {errors[`req_loc_${idx}`]}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-800 block mb-1">
+                      Salary Min (Rs / month) *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={req.salaryMin}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, '');
+                        handleUpdateRequirementRow(idx, {
+                          salaryMin: digits ? Number(digits) : 0,
+                        });
+                      }}
+                      className="w-full min-h-[42px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-800 block mb-1">
+                      Salary Max (Rs / month) *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={req.salaryMax}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, '');
+                        handleUpdateRequirementRow(idx, {
+                          salaryMax: digits ? Number(digits) : 0,
+                        });
+                      }}
+                      className="w-full min-h-[42px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-800 block mb-1">
+                      Extras Note
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="+ Rs 500 attendance bonus + unlimited incentives + ESI"
+                      value={req.extras || ''}
+                      onChange={(e) =>
+                        handleUpdateRequirementRow(idx, { extras: e.target.value })
+                      }
+                      className="w-full min-h-[42px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900"
+                    />
+                  </div>
+                </div>
+                {errors[`req_sal_${idx}`] && (
+                  <p className="text-xs text-rose-600 font-semibold">
+                    {errors[`req_sal_${idx}`]}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -763,7 +1120,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
             <textarea
               rows={2}
               maxLength={500}
-              placeholder="e.g. Spoke with HR Head regarding Q4 hiring requirements..."
+              placeholder="e.g. Spoke with HR Head regarding hiring requirements..."
               value={initialRemark}
               onChange={(e) => setInitialRemark(e.target.value)}
               className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"

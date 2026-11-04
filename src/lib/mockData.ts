@@ -9,6 +9,8 @@ import {
   CompanySettings,
   ReminderTask,
 } from '../types/crm';
+import { DEFAULT_WORK_PROFILE_CATEGORIES } from './workProfiles';
+import { getDefaultHiringRequirementsForCompany } from './companySearch';
 
 // Helper to compute relative dates in IST (Asia/Kolkata) as YYYY-MM-DD
 export const getISTDateString = (daysOffset = 0): string => {
@@ -98,6 +100,7 @@ export const buildSeedData = () => {
       'Healthcare & Pharma',
       'Manufacturing & Auto',
     ],
+    workProfileCategories: DEFAULT_WORK_PROFILE_CATEGORIES,
   };
 
   // Permanent Active Companies (Agreement Signed — Green Section)
@@ -107,7 +110,7 @@ export const buildSeedData = () => {
       name: 'Smile India Trust',
       industry: 'NGO / Non-Profit & Social Welfare',
       city: 'Noida',
-      address: 'A-100, Sector 4, Near Sector 16 Metro Station, Noida',
+      address: 'A-100, Sector 4, near Sector 16 Metro Station, Noida',
       website: 'https://smileindiatrust.org',
       contactPersons: [
         {
@@ -118,8 +121,14 @@ export const buildSeedData = () => {
           email: 'neha.hr@smileindiatrust.org',
         },
       ],
+      hiringRequirements: getDefaultHiringRequirementsForCompany({
+        id: 'cli_1',
+        name: 'Smile India Trust',
+        city: 'Noida',
+        address: 'A-100, Sector 4, near Sector 16 Metro Station, Noida',
+      }),
       agreementDetails:
-        'Profile: Client Relationship Associate (CRA) – Outbound Telecalling | Process: Fund Collection / Fundraising Process | Female Candidates Only | Age: 18 to below 30 years | Qualification: 12th Pass / Graduation Pursuing / Graduate | Freshers can apply | Salary: ₹15,100/month + ₹500 Attendance Bonus + Unlimited Incentives + ESI Card | Working Hours: 9:30 AM to 6:30 PM (Sunday Fixed Weekly Off)',
+        'Profile: Client Relationship Associate (CRA) - Outbound Telecalling | Process: Fund Collection / Fundraising Process | Female Candidates Only | Age: 18 to below 30 years | Qualification: 12th Pass / Graduation Pursuing / Graduate | Freshers can apply | Salary: Rs 15,100 per month + Rs 500 attendance bonus + unlimited incentives + ESI as applicable | Working Hours: 9:30 AM to 6:30 PM (Sunday Fixed Weekly Off)',
       commissionPercent: 8.33,
       paymentTerms: '30 Days Post Joining',
       status: 'Active',
@@ -138,7 +147,7 @@ export const buildSeedData = () => {
         {
           id: 'crem_1',
           clientId: 'cli_1',
-          text: 'Current Hiring Requirement — Profile: Client Relationship Associate (CRA) Outbound Telecalling (Fund Collection / Fundraising Process). Female Candidates Only, Age 18–30 yrs, 12th Pass/Pursuing/Graduate, Freshers welcome, Basic communication skills. Salary: ₹15,100/month + ₹500 Attendance Bonus + Unlimited Incentives + ESI Card. Shift: 9:30 AM – 6:30 PM, Sunday Fixed Off. Location: A-100, Sector 4, Near Sector 16 Metro Station, Noida. Contact: Neha (HR Executive) +91 90844 76832.',
+          text: 'Current Hiring Requirement — Profile: Client Relationship Associate (CRA) - Outbound Telecalling (Fund Collection / Fundraising Process). Female candidates only, age 18 to below 30, 12th pass / graduation pursuing / graduate, freshers can apply, basic communication. Salary: Rs 15,100 per month + Rs 500 attendance bonus + unlimited incentives + ESI as applicable. Shift: 9:30 AM to 6:30 PM, Sunday fixed weekly off. Location: A-100, Sector 4, near Sector 16 Metro Station, Noida. Contact: Neha (HR Executive) +91 90844 76832.',
           section: 'Green',
           authorUserId: 'usr_admin',
           authorName: 'Praveen Verma',
@@ -152,8 +161,7 @@ export const buildSeedData = () => {
       name: 'BJ BRIGHT ENTERPRISES',
       industry: 'HR Consultancy & Manpower Solutions',
       city: 'Noida',
-      address:
-        'H-213, Lohia Road, Sector 63, Noida, Gautam Buddha Nagar, Uttar Pradesh – 201301',
+      address: 'H-213, Lohia Road, Sector 63, Noida',
       website: 'https://maps.app.goo.gl/9ur13oTVPRaGgtN66?g_st=ac',
       contactPersons: [
         {
@@ -167,12 +175,18 @@ export const buildSeedData = () => {
           id: 'hrc_2b',
           name: 'HR Recruitment Desk (Alternate)',
           designation: 'Manpower & HR Solutions',
-          phone: '9914934536',
+          phone: '+91 9914934536',
           email: 'careers@bjbrightenterprises.in',
         },
       ],
+      hiringRequirements: getDefaultHiringRequirementsForCompany({
+        id: 'cli_2',
+        name: 'BJ BRIGHT ENTERPRISES',
+        city: 'Noida',
+        address: 'H-213, Lohia Road, Sector 63, Noida',
+      }),
       agreementDetails:
-        'Job Role: HR Recruiter | Eligibility: Good communication & convincing skills, basic knowledge of recruitment & hiring, ability to source candidates & conduct initial screenings, target-oriented approach (Freshers & Experienced can apply) | Salary: ₹13,000 – ₹18,000/month + Incentives & Growth Opportunities | Interview Timing: 11:00 AM – 4:30 PM | Office: H-213, Lohia Road, Sector 63, Noida – 201301',
+        'Job Role: HR Recruiter | Eligibility: Good communication and convincing skills, basic recruitment knowledge, sourcing and initial screening, target oriented, freshers and experienced can apply | Salary: Rs 13,000 - 18,000 per month + incentives and growth opportunities | Interview Timing: 11:00 AM to 4:30 PM | Office: H-213, Lohia Road, Sector 63, Noida',
       commissionPercent: 8.33,
       paymentTerms: 'Direct / Internal & Client Mandate',
       status: 'Active',
@@ -191,7 +205,7 @@ export const buildSeedData = () => {
         {
           id: 'crem_2',
           clientId: 'cli_2',
-          text: 'WE ARE HIRING – HR RECRUITER | Salary: ₹13,000 – ₹18,000/month + Incentives & Growth Opportunities. Eligibility: Good communication & convincing skills, basic knowledge of recruitment, ability to source & screen candidates (Freshers & experienced welcome). Interview Timing: 11:00 AM – 4:30 PM. Address: H-213, Lohia Road, Sector 63, Noida – 201301. Contacts: 8448892852 / +91 9914934536. Maps: https://maps.app.goo.gl/9ur13oTVPRaGgtN66?g_st=ac',
+          text: 'WE ARE HIRING – HR RECRUITER | Salary: Rs 13,000 - 18,000 per month + incentives and growth opportunities. Eligibility: Good communication and convincing skills, basic recruitment knowledge, sourcing and initial screening, target oriented, freshers and experienced can apply. Interview Timing: 11:00 AM to 4:30 PM. Address: H-213, Lohia Road, Sector 63, Noida. Contacts: 8448892852 / +91 9914934536.',
           section: 'Green',
           authorUserId: 'usr_admin',
           authorName: 'Praveen Verma',

@@ -110,16 +110,28 @@ service cloud.firestore {
         resource.data.assignedRecruiterId == request.auth.uid
       );
 
+      // entryDate (server time) and enteredBy are written on create
       allow create: if isActiveUser() &&
-        isValidCandidateStatus() && (
+        isValidCandidateStatus() &&
+        'entryDate' in request.resource.data &&
+        (request.resource.data.entryDate == request.time || isAdmin()) &&
+        'enteredBy' in request.resource.data &&
+        request.resource.data.enteredBy is string &&
+        request.resource.data.enteredBy.trim().size() > 0 && (
           isAdminOrManager() ||
           request.resource.data.assignedRecruiterId == request.auth.uid
         );
 
-      // Edits to candidates must include a non-empty edit reason
+      // Edits to candidates must include a non-empty edit reason; entryDate & enteredBy cannot be changed unless Admin
       allow update: if isActiveUser() &&
         isValidCandidateStatus() &&
-        hasNonEmptyEditReason() && (
+        hasNonEmptyEditReason() &&
+        (isAdmin() || (
+          (!('entryDate' in request.resource.data) ||
+           ('entryDate' in resource.data && request.resource.data.entryDate == resource.data.entryDate)) &&
+          (!('enteredBy' in request.resource.data) ||
+           ('enteredBy' in resource.data && request.resource.data.enteredBy == resource.data.enteredBy))
+        )) && (
           isAdminOrManager() ||
           resource.data.assignedRecruiterId == request.auth.uid
         );

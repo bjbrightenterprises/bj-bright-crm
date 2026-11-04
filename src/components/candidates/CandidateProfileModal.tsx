@@ -17,8 +17,11 @@ import {
   Trash2,
   Share2,
   Bell,
+  Briefcase,
+  UserCheck,
 } from 'lucide-react';
 import { SetReminderModal } from '../reminders/SetReminderModal';
+import { formatISTDateTime } from '../../lib/workProfiles';
 
 interface CandidateProfileModalProps {
   isOpen: boolean;
@@ -106,6 +109,12 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                 >
                   {candidate.status}
                 </Badge>
+                {candidate.workProfile && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-[#0B1F4B] text-xs font-bold">
+                    <Briefcase className="w-3 h-3 text-[#F5A623]" />
+                    <span>{candidate.workProfile}</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-700 mt-1 flex items-center gap-2 flex-wrap">
                 <span>{candidate.currentCompany}</span>
@@ -116,6 +125,27 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                 </span>
                 <span>•</span>
                 <span>{candidate.experienceYears} Years Exp</span>
+              </p>
+              <p className="text-[11px] text-slate-600 mt-1 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-[#0B1F4B]" />
+                  <span>
+                    Entry date:{' '}
+                    <strong className="text-slate-900">
+                      {formatISTDateTime(candidate.entryDate || candidate.createdAt)}
+                    </strong>
+                  </span>
+                </span>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1">
+                  <UserCheck className="w-3 h-3 text-[#F5A623]" />
+                  <span>
+                    Entered by:{' '}
+                    <strong className="text-slate-900">
+                      {candidate.enteredBy || candidate.assignedRecruiterName}
+                    </strong>
+                  </span>
+                </span>
               </p>
             </div>
           </div>
@@ -267,6 +297,12 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                     </span>
                     <span className="font-bold text-slate-900">
                       {candidate.city}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-600">Work Profile</span>
+                    <span className="px-2.5 py-0.5 rounded bg-blue-50 font-bold text-[#0B1F4B] border border-blue-200">
+                      {candidate.workProfile || 'Not Specified'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
@@ -552,7 +588,8 @@ export const CandidateProfileModal: React.FC<CandidateProfileModalProps> = ({
                   Profile Sourced via {candidate.source}
                 </p>
                 <p className="text-xs text-slate-600">
-                  Created on {new Date(candidate.createdAt).toLocaleDateString('en-GB')}
+                  Entry date: {formatISTDateTime(candidate.entryDate || candidate.createdAt)} • Entered by:{' '}
+                  {candidate.enteredBy || candidate.assignedRecruiterName}
                 </p>
               </div>
             </div>

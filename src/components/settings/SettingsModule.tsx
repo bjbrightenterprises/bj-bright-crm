@@ -17,16 +17,28 @@ import {
   FileSpreadsheet,
   ArrowDownToLine,
   ArrowUpFromLine,
+  ArrowUp,
+  ArrowDown,
+  Briefcase,
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
-import { User, UserRole } from '../../types/crm';
+import { User, UserRole, WorkProfileCategory } from '../../types/crm';
 import { Badge } from '../common/Badge';
 import { Modal } from '../common/Modal';
+import {
+  ensureWorkProfileCategories,
+  getAllFlatWorkProfiles,
+  toTitleCaseWorkProfile,
+  validateCustomWorkProfile,
+  findMatchingExistingProfile,
+} from '../../lib/workProfiles';
 
 export const SettingsModule: React.FC = () => {
   const {
     users,
     clients,
+    candidates,
+    updateCandidate,
     currentUser,
     canManageUsers,
     addUser,
@@ -81,6 +93,208 @@ export const SettingsModule: React.FC = () => {
   const [newSkill, setNewSkill] = useState('');
   const [newSource, setNewSource] = useState('');
   const [newIndustry, setNewIndustry] = useState('');
+
+  // Work Profile Masters state
+  const [newWpCategoryName, setNewWpCategoryName] = useState('');
+  const [newWpProfileName, setNewWpProfileName] = useState('');
+  const [newWpTargetCategoryId, setNewWpTargetCategoryId] = useState('wpcat_1');
+  const [wpMasterError, setWpMasterError] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryValue, setEditingCategoryValue] = useState('');
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [editingProfileValue, setEditingProfileValue] = useState('');
+  const [customPromoteCategoryMap, setCustomPromoteCategoryMap] = useState<Record<string, string>>({});
+
+  const workProfileCategories = ensureWorkProfileCategories(
+    companySettings.workProfileCategories
+  );
+
+  // Compute custom profiles typed by users with counts
+  const customTypedProfiles = React.useMemo(() => {
+    const masterSet = new Set(
+      getAllFlatWorkProfiles(workProfileCategories, true).map((p) =>
+        p.name.toLowerCase().replace(/\s+/g, '')
+      )
+    );
+    const countsMap = new Map<string, number>();
+    candidates.forEach((c) => {
+      if (c.deletedAt) return;
+      const wp = (c.workProfile || '').trim();
+      if (!wp || wp.toLowerCase() === 'other') return;
+      const norm = wp.toLowerCase().replace(/\s+/g, '');
+      if (c.workProfileIsCustom || !masterSet.has(norm)) {
+        countsMap.set(wp, (countsMap.get(wp) || 0) + 1);
+      }
+    });
+    return Array.from(countsMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [candidates, workProfileCategories]);
+
+  const saveWorkProfileCategories = (next: WorkProfileCategory[]) => {
+    const normalized = ensureWorkProfileCategories(
+      next.map((c, cIdx) => ({
+        ...c,
+        order: c.name.toLowerCase() === 'other' ? 999 : cIdx + 1,
+        profiles: c.profiles.map((p, pIdx) => ({ ...p, order: pIdx + 1 })),
+      }))
+    );
+    updateCompanySettings({ workProfileCategories: normalized });
+  };
+
+  const handleAddWpCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    setWpMasterError('');
+    const formatted = toTitleCaseWorkProfile(newWpCategoryName);
+    if (formatted.length < 2) {
+      setWpMasterError('Category name must be at least 2 characters.');
+      return;
+    }
+    if (
+      workProfileCategories.some(
+        (c) => c.name.toLowerCase() === formatted.toLowerCase()
+      )
+    ) {
+      setWpMasterError(`Category "${formatted}" already exists.`);
+      return;
+    }
+    const newCat: WorkProfileCategory = {
+      id: `wpcat_${Date.now()}`,
+      name: formatted,
+      active: true,
+      order: workProfileCategories.length,
+      profiles: [],
+    };
+    const withoutOther = workProfileCategories.filter(
+      (c) => c.name.toLowerCase() !== 'other'
+    );
+    const otherCat = workProfileCategories.find(
+      (c) => c.name.toLowerCase() === 'other'
+    );
+    saveWorkProfileCategories([
+      ...withoutOther,
+      newCat,
+      ...(otherCat ? [otherCat] : []),
+    ]);
+    setNewWpCategoryName('');
+    setNewWpTargetCategoryId(newCat.id);
+  };
+
+  const handleAddWpProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    setWpMasterError('');
+    const check = validateCustomWorkProfile(newWpProfileName);
+    if (!check.valid) {
+      setWpMasterError(check.error || 'Invalid work profile name.');
+      return;
+    }
+    const existing = findMatchingExistingProfile(
+      check.formatted,
+      workProfileCategories
+    );
+    if (existing) {
+      setWpMasterError(
+        `Profile "${existing.name}" already exists in "${existing.category}".`
+      );
+      return;
+    }
+    const next = workProfileCategories.map((cat) => {
+      if (cat.id !== newWpTargetCategoryId) return cat;
+      return {
+        ...cat,
+        profiles: [
+          ...cat.profiles,
+          {
+            id: `wp_${Date.now()}`,
+            name: check.formatted,
+            active: true,
+            order: cat.profiles.length + 1,
+          },
+        ],
+      };
+    });
+    saveWorkProfileCategories(next);
+    setNewWpProfileName('');
+  };
+
+  const handleMoveCategory = (index: number, direction: -1 | 1) => {
+    const nonOther = workProfileCategories.filter(
+      (c) => c.name.toLowerCase() !== 'other'
+    );
+    const otherCat = workProfileCategories.find(
+      (c) => c.name.toLowerCase() === 'other'
+    );
+    const targetIdx = index + direction;
+    if (targetIdx < 0 || targetIdx >= nonOther.length) return;
+    const swapped = [...nonOther];
+    const temp = swapped[index];
+    swapped[index] = swapped[targetIdx];
+    swapped[targetIdx] = temp;
+    saveWorkProfileCategories([...swapped, ...(otherCat ? [otherCat] : [])]);
+  };
+
+  const handleMoveProfile = (
+    categoryId: string,
+    profileIndex: number,
+    direction: -1 | 1
+  ) => {
+    const next = workProfileCategories.map((cat) => {
+      if (cat.id !== categoryId) return cat;
+      const targetIdx = profileIndex + direction;
+      if (targetIdx < 0 || targetIdx >= cat.profiles.length) return cat;
+      const swapped = [...cat.profiles];
+      const temp = swapped[profileIndex];
+      swapped[profileIndex] = swapped[targetIdx];
+      swapped[targetIdx] = temp;
+      return { ...cat, profiles: swapped };
+    });
+    saveWorkProfileCategories(next);
+  };
+
+  const handlePromoteCustomProfileToMaster = (customName: string) => {
+    const targetCatId =
+      customPromoteCategoryMap[customName] ||
+      workProfileCategories.find((c) => c.name.toLowerCase() !== 'other')?.id ||
+      'wpcat_1';
+    const formatted = toTitleCaseWorkProfile(customName);
+    const existing = findMatchingExistingProfile(formatted, workProfileCategories);
+
+    if (!existing) {
+      const next = workProfileCategories.map((cat) => {
+        if (cat.id !== targetCatId) return cat;
+        return {
+          ...cat,
+          profiles: [
+            ...cat.profiles,
+            {
+              id: `wp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              name: formatted,
+              active: true,
+              order: cat.profiles.length + 1,
+            },
+          ],
+        };
+      });
+      saveWorkProfileCategories(next);
+    }
+
+    // Update matching candidates so workProfileIsCustom is false and normalized
+    candidates.forEach((c) => {
+      if (
+        (c.workProfile || '').toLowerCase().replace(/\s+/g, '') ===
+        formatted.toLowerCase().replace(/\s+/g, '')
+      ) {
+        updateCandidate(
+          c.id,
+          {
+            workProfile: existing ? existing.name : formatted,
+            workProfileIsCustom: false,
+          },
+          'Added custom work profile to master list'
+        );
+      }
+    });
+  };
 
   const handleSaveCompany = (e: React.FormEvent) => {
     e.preventDefault();
@@ -766,178 +980,602 @@ export const SettingsModule: React.FC = () => {
 
       {/* Tab 3: Masters */}
       {activeTab === 'masters' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 text-xs">
-          {/* Skills Master */}
-          <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4 shadow-2xs">
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-900">
-                Candidate Skill Tags ({companySettings.availableSkills.length})
-              </h3>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Skills available across candidate & job requisition forms
-              </p>
+        <div className="space-y-6 text-xs">
+          {/* Work Profile Master List & Custom Profiles Section */}
+          <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 space-y-5 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+              <div>
+                <h3 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-[#F5A623]" />
+                  <span>
+                    Work Profile Dropdown Master (
+                    {getAllFlatWorkProfiles(workProfileCategories, true).length} Profiles across{' '}
+                    {workProfileCategories.length} Categories)
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Add, rename, activate/deactivate, and reorder categories &amp; work profiles shown
+                  in Candidate forms and filters.
+                </p>
+              </div>
             </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const val = newSkill.trim();
-                if (!val || companySettings.availableSkills.includes(val)) return;
-                updateCompanySettings({ availableSkills: [...companySettings.availableSkills, val] });
-                setNewSkill('');
-              }}
-              className="flex gap-2"
-            >
-              <input
-                type="text"
-                value={newSkill}
-                onChange={(e) => setNewSkill(e.target.value)}
-                placeholder="Add new skill (e.g. SAP FICO)"
-                className="flex-1 min-h-[42px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
-              />
-              <button
-                type="submit"
-                className="min-h-[42px] px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
-              >
-                + Add
-              </button>
-            </form>
-            <div className="flex flex-wrap gap-1.5 max-h-64 overflow-y-auto">
-              {companySettings.availableSkills.map((s) => (
-                <span
-                  key={s}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 font-semibold"
+
+            {wpMasterError && (
+              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 font-bold">
+                {wpMasterError}
+              </div>
+            )}
+
+            {/* Custom Profiles Typed by Users */}
+            <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h4 className="font-extrabold text-xs text-slate-900">
+                    Custom profiles typed by users ({customTypedProfiles.length})
+                  </h4>
+                  <p className="text-[11px] text-slate-600">
+                    When users select "Other" and type a custom work profile, it appears here with
+                    its usage count. One-click adds it to the master list.
+                  </p>
+                </div>
+              </div>
+
+              {customTypedProfiles.length === 0 ? (
+                <p className="text-xs text-slate-600 italic">
+                  No custom profiles pending promotion — all candidate work profiles are in the
+                  master list.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {customTypedProfiles.map((item) => (
+                    <div
+                      key={item.name}
+                      className="p-2.5 rounded-lg bg-white border border-amber-300 flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-bold text-slate-900 truncate">{item.name}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200 font-extrabold text-[10px]">
+                          {item.count} {item.count === 1 ? 'candidate' : 'candidates'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={
+                            customPromoteCategoryMap[item.name] ||
+                            workProfileCategories.find((c) => c.name.toLowerCase() !== 'other')
+                              ?.id ||
+                            ''
+                          }
+                          onChange={(e) =>
+                            setCustomPromoteCategoryMap((prev) => ({
+                              ...prev,
+                              [item.name]: e.target.value,
+                            }))
+                          }
+                          className="min-h-[34px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-[11px] text-slate-800"
+                        >
+                          {workProfileCategories
+                            .filter((c) => c.name.toLowerCase() !== 'other')
+                            .map((cat) => (
+                              <option key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handlePromoteCustomProfileToMaster(item.name)}
+                          className="min-h-[34px] px-3 py-1 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold text-[11px] whitespace-nowrap cursor-pointer"
+                        >
+                          + Add to master list
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Add New Category & Add New Profile Forms */}
+            {currentUser.role === 'admin' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <form
+                  onSubmit={handleAddWpProfile}
+                  className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2"
                 >
-                  <span>{s}</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateCompanySettings({
-                        availableSkills: companySettings.availableSkills.filter((item) => item !== s),
-                      })
-                    }
-                    className="text-slate-500 hover:text-rose-600 font-bold cursor-pointer px-1"
-                    title="Remove skill"
+                  <label className="font-bold text-slate-800 block">
+                    Add Work Profile to Category
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={newWpTargetCategoryId}
+                      onChange={(e) => setNewWpTargetCategoryId(e.target.value)}
+                      className="min-h-[40px] px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 sm:w-48"
+                    >
+                      {workProfileCategories
+                        .filter((c) => c.name.toLowerCase() !== 'other')
+                        .map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={newWpProfileName}
+                      onChange={(e) => setNewWpProfileName(e.target.value)}
+                      placeholder="New profile (Title Case)"
+                      className="flex-1 min-h-[40px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
+                    />
+                    <button
+                      type="submit"
+                      className="min-h-[40px] px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold whitespace-nowrap cursor-pointer"
+                    >
+                      + Add Profile
+                    </button>
+                  </div>
+                </form>
+
+                <form
+                  onSubmit={handleAddWpCategory}
+                  className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2"
+                >
+                  <label className="font-bold text-slate-800 block">
+                    Add New Profile Category
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newWpCategoryName}
+                      onChange={(e) => setNewWpCategoryName(e.target.value)}
+                      placeholder="e.g. Legal and Compliance"
+                      className="flex-1 min-h-[40px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
+                    />
+                    <button
+                      type="submit"
+                      className="min-h-[40px] px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold whitespace-nowrap cursor-pointer"
+                    >
+                      + Add Category
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Categories and Profiles List */}
+            <div className="space-y-3 max-h-[540px] overflow-y-auto pr-1">
+              {workProfileCategories.map((cat, catIdx) => {
+                const isOtherCat = cat.name.toLowerCase() === 'other';
+                const nonOtherCount = workProfileCategories.filter(
+                  (c) => c.name.toLowerCase() !== 'other'
+                ).length;
+
+                return (
+                  <div
+                    key={cat.id}
+                    className={`rounded-xl border p-3.5 space-y-2.5 ${
+                      cat.active
+                        ? 'bg-white border-slate-200'
+                        : 'bg-slate-50 border-slate-200 opacity-70'
+                    }`}
                   >
-                    ×
-                  </button>
-                </span>
-              ))}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        {editingCategoryId === cat.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingCategoryValue}
+                              onChange={(e) => setEditingCategoryValue(e.target.value)}
+                              className="min-h-[34px] px-2.5 py-1 rounded border border-slate-300 bg-white text-xs text-slate-900 font-bold"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const renamed = editingCategoryValue.trim();
+                                if (renamed.length >= 2) {
+                                  saveWorkProfileCategories(
+                                    workProfileCategories.map((c) =>
+                                      c.id === cat.id ? { ...c, name: renamed } : c
+                                    )
+                                  );
+                                }
+                                setEditingCategoryId(null);
+                              }}
+                              className="min-h-[34px] px-2.5 py-1 rounded bg-emerald-600 text-white font-bold text-[11px] cursor-pointer"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCategoryId(null)}
+                              className="min-h-[34px] px-2 py-1 rounded bg-slate-200 text-slate-800 font-bold text-[11px] cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="font-extrabold text-xs sm:text-sm text-[#0B1F4B]">
+                              {cat.name}
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                              {cat.profiles.filter((p) => p.active).length} active /{' '}
+                              {cat.profiles.length} total
+                            </span>
+                            {!cat.active && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">
+                                Deactivated
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {currentUser.role === 'admin' && !isOtherCat && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={catIdx === 0}
+                            onClick={() => handleMoveCategory(catIdx, -1)}
+                            className="p-1.5 rounded border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-700 cursor-pointer"
+                            title="Move Category Up"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={catIdx >= nonOtherCount - 1}
+                            onClick={() => handleMoveCategory(catIdx, 1)}
+                            className="p-1.5 rounded border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-700 cursor-pointer"
+                            title="Move Category Down"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCategoryId(cat.id);
+                              setEditingCategoryValue(cat.name);
+                            }}
+                            className="px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-[11px] cursor-pointer"
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              saveWorkProfileCategories(
+                                workProfileCategories.map((c) =>
+                                  c.id === cat.id ? { ...c, active: !c.active } : c
+                                )
+                              )
+                            }
+                            className={`px-2 py-1 rounded border font-semibold text-[11px] cursor-pointer ${
+                              cat.active
+                                ? 'border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {cat.active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Profiles inside Category */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {cat.profiles.map((prof, pIdx) => (
+                        <div
+                          key={prof.id}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs ${
+                            prof.active
+                              ? 'bg-slate-50 border-slate-200 text-slate-900 font-semibold'
+                              : 'bg-slate-100 border-slate-200 text-slate-400 line-through'
+                          }`}
+                        >
+                          {editingProfileId === prof.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={editingProfileValue}
+                                onChange={(e) => setEditingProfileValue(e.target.value)}
+                                className="min-h-[28px] px-2 py-0.5 rounded border border-slate-300 bg-white text-xs text-slate-900"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const check = validateCustomWorkProfile(editingProfileValue);
+                                  if (check.valid) {
+                                    saveWorkProfileCategories(
+                                      workProfileCategories.map((c) =>
+                                        c.id !== cat.id
+                                          ? c
+                                          : {
+                                              ...c,
+                                              profiles: c.profiles.map((p) =>
+                                                p.id === prof.id
+                                                  ? { ...p, name: check.formatted }
+                                                  : p
+                                              ),
+                                            }
+                                      )
+                                    );
+                                  }
+                                  setEditingProfileId(null);
+                                }}
+                                className="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-[10px] cursor-pointer"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingProfileId(null)}
+                                className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-800 text-[10px] cursor-pointer"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <span>{prof.name}</span>
+                              {currentUser.role === 'admin' && !isOtherCat && (
+                                <span className="inline-flex items-center gap-0.5 ml-1 pl-1 border-l border-slate-200">
+                                  <button
+                                    type="button"
+                                    disabled={pIdx === 0}
+                                    onClick={() => handleMoveProfile(cat.id, pIdx, -1)}
+                                    className="p-0.5 text-slate-400 hover:text-slate-800 disabled:opacity-30 cursor-pointer"
+                                    title="Move Left / Earlier"
+                                  >
+                                    ←
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={pIdx === cat.profiles.length - 1}
+                                    onClick={() => handleMoveProfile(cat.id, pIdx, 1)}
+                                    className="p-0.5 text-slate-400 hover:text-slate-800 disabled:opacity-30 cursor-pointer"
+                                    title="Move Right / Later"
+                                  >
+                                    →
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingProfileId(prof.id);
+                                      setEditingProfileValue(prof.name);
+                                    }}
+                                    className="px-1 text-[10px] text-blue-700 hover:underline cursor-pointer"
+                                    title="Rename Profile"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      saveWorkProfileCategories(
+                                        workProfileCategories.map((c) =>
+                                          c.id !== cat.id
+                                            ? c
+                                            : {
+                                                ...c,
+                                                profiles: c.profiles.map((p) =>
+                                                  p.id === prof.id
+                                                    ? { ...p, active: !p.active }
+                                                    : p
+                                                ),
+                                              }
+                                        )
+                                      )
+                                    }
+                                    className={`px-1 text-[10px] font-bold cursor-pointer ${
+                                      prof.active
+                                        ? 'text-rose-600 hover:underline'
+                                        : 'text-emerald-700 hover:underline'
+                                    }`}
+                                    title={prof.active ? 'Deactivate profile' : 'Activate profile'}
+                                  >
+                                    {prof.active ? 'Disable' : 'Enable'}
+                                  </button>
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Sources Master */}
-          <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4 shadow-2xs">
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-900">
-                Sourcing Channels ({companySettings.availableSources.length})
-              </h3>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Channels for tracking candidate acquisition
-              </p>
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const val = newSource.trim();
-                if (!val || companySettings.availableSources.includes(val)) return;
-                updateCompanySettings({ availableSources: [...companySettings.availableSources, val] });
-                setNewSource('');
-              }}
-              className="flex gap-2"
-            >
-              <input
-                type="text"
-                value={newSource}
-                onChange={(e) => setNewSource(e.target.value)}
-                placeholder="Add source (e.g. Apna, Shine)"
-                className="flex-1 min-h-[42px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
-              />
-              <button
-                type="submit"
-                className="min-h-[42px] px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Skills Master */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4 shadow-2xs">
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Candidate Skill Tags ({companySettings.availableSkills.length})
+                </h3>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Skills available across candidate &amp; job requisition forms
+                </p>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const val = newSkill.trim();
+                  if (!val || companySettings.availableSkills.includes(val)) return;
+                  updateCompanySettings({
+                    availableSkills: [...companySettings.availableSkills, val],
+                  });
+                  setNewSkill('');
+                }}
+                className="flex gap-2"
               >
-                + Add
-              </button>
-            </form>
-            <div className="flex flex-wrap gap-1.5">
-              {companySettings.availableSources.map((s) => (
-                <span
-                  key={s}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 font-semibold"
+                <input
+                  type="text"
+                  value={newSkill}
+                  onChange={(e) => setNewSkill(e.target.value)}
+                  placeholder="Add new skill (e.g. SAP FICO)"
+                  className="flex-1 min-h-[42px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
+                />
+                <button
+                  type="submit"
+                  className="min-h-[42px] px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
                 >
-                  <span>{s}</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateCompanySettings({
-                        availableSources: companySettings.availableSources.filter((item) => item !== s),
-                      })
-                    }
-                    className="text-slate-500 hover:text-rose-600 font-bold cursor-pointer px-1"
-                    title="Remove source"
+                  + Add
+                </button>
+              </form>
+              <div className="flex flex-wrap gap-1.5 max-h-64 overflow-y-auto">
+                {companySettings.availableSkills.map((s) => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 font-semibold"
                   >
-                    ×
-                  </button>
-                </span>
-              ))}
+                    <span>{s}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateCompanySettings({
+                          availableSkills: companySettings.availableSkills.filter(
+                            (item) => item !== s
+                          ),
+                        })
+                      }
+                      className="text-slate-500 hover:text-rose-600 font-bold cursor-pointer px-1"
+                      title="Remove skill"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Industries Master */}
-          <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4 shadow-2xs">
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-900">
-                Client Industries ({companySettings.availableIndustries.length})
-              </h3>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Sectors available when onboarding corporate clients
-              </p>
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const val = newIndustry.trim();
-                if (!val || companySettings.availableIndustries.includes(val)) return;
-                updateCompanySettings({ availableIndustries: [...companySettings.availableIndustries, val] });
-                setNewIndustry('');
-              }}
-              className="flex gap-2"
-            >
-              <input
-                type="text"
-                value={newIndustry}
-                onChange={(e) => setNewIndustry(e.target.value)}
-                placeholder="Add industry sector"
-                className="flex-1 min-h-[42px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
-              />
-              <button
-                type="submit"
-                className="min-h-[42px] px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
+            {/* Sources Master */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4 shadow-2xs">
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Sourcing Channels ({companySettings.availableSources.length})
+                </h3>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Channels for tracking candidate acquisition
+                </p>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const val = newSource.trim();
+                  if (!val || companySettings.availableSources.includes(val)) return;
+                  updateCompanySettings({
+                    availableSources: [...companySettings.availableSources, val],
+                  });
+                  setNewSource('');
+                }}
+                className="flex gap-2"
               >
-                + Add
-              </button>
-            </form>
-            <div className="flex flex-wrap gap-1.5">
-              {companySettings.availableIndustries.map((ind) => (
-                <span
-                  key={ind}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 font-semibold"
+                <input
+                  type="text"
+                  value={newSource}
+                  onChange={(e) => setNewSource(e.target.value)}
+                  placeholder="Add source (e.g. Apna, Shine)"
+                  className="flex-1 min-h-[42px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
+                />
+                <button
+                  type="submit"
+                  className="min-h-[42px] px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
                 >
-                  <span>{ind}</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateCompanySettings({
-                        availableIndustries: companySettings.availableIndustries.filter((item) => item !== ind),
-                      })
-                    }
-                    className="text-slate-500 hover:text-rose-600 font-bold cursor-pointer px-1"
-                    title="Remove industry"
+                  + Add
+                </button>
+              </form>
+              <div className="flex flex-wrap gap-1.5">
+                {companySettings.availableSources.map((s) => (
+                  <span
+                    key={s}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 font-semibold"
                   >
-                    ×
-                  </button>
-                </span>
-              ))}
+                    <span>{s}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateCompanySettings({
+                          availableSources: companySettings.availableSources.filter(
+                            (item) => item !== s
+                          ),
+                        })
+                      }
+                      className="text-slate-500 hover:text-rose-600 font-bold cursor-pointer px-1"
+                      title="Remove source"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Industries Master */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4 shadow-2xs">
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  Client Industries ({companySettings.availableIndustries.length})
+                </h3>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Sectors available when onboarding corporate clients
+                </p>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const val = newIndustry.trim();
+                  if (!val || companySettings.availableIndustries.includes(val)) return;
+                  updateCompanySettings({
+                    availableIndustries: [...companySettings.availableIndustries, val],
+                  });
+                  setNewIndustry('');
+                }}
+                className="flex gap-2"
+              >
+                <input
+                  type="text"
+                  value={newIndustry}
+                  onChange={(e) => setNewIndustry(e.target.value)}
+                  placeholder="Add industry sector"
+                  className="flex-1 min-h-[42px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900"
+                />
+                <button
+                  type="submit"
+                  className="min-h-[42px] px-3.5 py-1.5 rounded-lg bg-[#0B1F4B] text-white font-bold cursor-pointer"
+                >
+                  + Add
+                </button>
+              </form>
+              <div className="flex flex-wrap gap-1.5">
+                {companySettings.availableIndustries.map((ind) => (
+                  <span
+                    key={ind}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 font-semibold"
+                  >
+                    <span>{ind}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateCompanySettings({
+                          availableIndustries: companySettings.availableIndustries.filter(
+                            (item) => item !== ind
+                          ),
+                        })
+                      }
+                      className="text-slate-500 hover:text-rose-600 font-bold cursor-pointer px-1"
+                      title="Remove industry"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>

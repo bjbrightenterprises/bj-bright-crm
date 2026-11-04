@@ -42,6 +42,7 @@ import {
   getLatestClientRemark,
   getSectionBadgeMeta,
   HighlightMatch,
+  CallSummaryBlock,
 } from '../../lib/companySearch';
 
 interface ClientsModuleProps {
@@ -111,6 +112,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
   const {
     visibleClients,
     trashClients,
+    jobs,
     currentUser,
     canCreateTasks,
     globalSearch,
@@ -1007,7 +1009,7 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
               </div>
 
               {/* Cards List inside Section */}
-              <div className="p-3 sm:p-3.5 space-y-3 min-h-[220px]">
+              <div className="p-2.5 sm:p-3 space-y-2.5 min-h-[200px]">
                 {sectionClients.length === 0 ? (
                   <div className="py-10 text-center text-xs text-slate-500 border border-dashed border-slate-300 bg-white rounded-xl">
                     No companies in {cfg.title}.
@@ -1015,16 +1017,6 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                 ) : (
                   sectionClients.map((client) => {
                     const mainContact = client.contactPersons?.[0];
-                    const keyDateValue =
-                      cfg.section === 'Green'
-                        ? client.agreementSignedDate || client.createdAt
-                        : cfg.section === 'Blue'
-                        ? client.lastContactedDate || client.createdAt
-                        : client.enquiryDate || client.createdAt;
-
-                    const isOverdue =
-                      !!client.nextFollowUpDate && client.nextFollowUpDate < todayStr;
-
                     const sortedRemarks = [...(client.remarks || [])].sort(
                       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
                     );
@@ -1043,199 +1035,60 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                           setDraggedClientId(null);
                           setDragOverSection(null);
                         }}
-                        className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs hover:border-[#0B1F4B] transition-all space-y-3"
+                        className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs hover:border-[#0B1F4B] transition-all space-y-2"
                       >
-                        {/* Company Name, Industry, City */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h4
-                              onClick={() => setActiveProfileClient(client)}
-                              className="font-extrabold text-sm text-slate-900 hover:text-[#0B1F4B] hover:underline cursor-pointer truncate"
-                              title={client.name}
-                            >
-                              <HighlightMatch text={client.name} query={debouncedSearch} />
-                            </h4>
-                            <p className="text-[11px] text-slate-600 truncate mt-0.5">
-                              <HighlightMatch text={client.industry} query={debouncedSearch} />
-                            </p>
-                          </div>
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 text-[11px] font-semibold flex items-center gap-1 shrink-0">
-                            <MapPin className="w-3 h-3 text-[#F5A623]" />
-                            <HighlightMatch text={client.city} query={debouncedSearch} />
-                          </span>
-                        </div>
+                        {/* 1. TOP CALL SUMMARY BLOCK (First thing on every company card, nothing above it) */}
+                        <CallSummaryBlock
+                          client={client}
+                          jobs={jobs}
+                          searchQuery={debouncedSearch}
+                          onCompanyClick={() => setActiveProfileClient(client)}
+                          variant="card"
+                        />
 
-                        {/* Main Contact Person & Phone */}
-                        <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <span className="text-[10px] uppercase font-bold text-slate-500 block">
-                              Main Contact
+                        {/* 2. Contact Phone (tap-to-call link) + Latest Remark in one line */}
+                        <div className="pt-1.5 border-t border-slate-100 space-y-1 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-slate-600 truncate">
+                              {mainContact?.name ? (
+                                <HighlightMatch text={mainContact.name} query={debouncedSearch} />
+                              ) : (
+                                'Contact'
+                              )}
                             </span>
-                            <p className="font-bold text-slate-900 truncate">
-                              <HighlightMatch
-                                text={mainContact?.name || '-'}
-                                query={debouncedSearch}
-                              />
-                            </p>
-                          </div>
-                          <div className="text-right shrink-0">
                             {mainContact?.phone ? (
                               <a
-                                href={`tel:${mainContact.phone}`}
-                                className="min-h-[32px] px-2 py-1 rounded-md bg-white border border-slate-200 text-xs font-bold text-[#0B1F4B] hover:underline flex items-center gap-1"
+                                href={`tel:${mainContact.phone.replace(/\s+/g, '')}`}
+                                className="inline-flex items-center gap-1 font-extrabold text-[#0B1F4B] hover:underline shrink-0"
                               >
                                 <Phone className="w-3 h-3 text-[#F5A623]" />
-                                <HighlightMatch
-                                  text={mainContact.phone}
-                                  query={debouncedSearch}
-                                />
+                                <HighlightMatch text={mainContact.phone} query={debouncedSearch} />
                               </a>
                             ) : (
-                              <span className="text-xs text-slate-500">-</span>
+                              <span className="text-[11px] text-slate-400">No phone</span>
                             )}
                           </div>
-                        </div>
 
-                        {/* Key Date for Section & Next Follow-up Date */}
-                        <div className="grid grid-cols-2 gap-2 text-[11px]">
-                          <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                            <span className="text-[10px] text-slate-500 font-bold block">
-                              {cfg.keyDateLabel}
-                            </span>
-                            <span className="font-bold text-slate-900 flex items-center gap-1 mt-0.5">
-                              <Calendar className="w-3 h-3 text-slate-500" />
-                              {formatIndianDate(keyDateValue)}
-                            </span>
-                          </div>
-
-                          <div
-                            className={`p-2 rounded-lg border ${
-                              isOverdue
-                                ? 'bg-rose-50 border-rose-200'
-                                : 'bg-slate-50 border-slate-200'
-                            }`}
+                          <p
+                            title={latestRemark || 'No remarks recorded yet'}
+                            className="text-[11px] text-slate-700 truncate font-medium flex items-center gap-1"
                           >
-                            <span className="text-[10px] text-slate-500 font-bold block">
-                              Next Follow-up
-                            </span>
-                            <span
-                              className={`font-bold flex items-center gap-1 mt-0.5 ${
-                                isOverdue ? 'text-rose-700' : 'text-slate-900'
-                              }`}
-                            >
-                              <Clock className="w-3 h-3 shrink-0" />
-                              {client.nextFollowUpDate
-                                ? formatIndianDate(client.nextFollowUpDate)
-                                : 'Not set'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Company JD / Hiring Requirements (with Expand & Quick Edit JD) */}
-                        <div className="p-2.5 rounded-lg bg-blue-50/60 border border-blue-200 text-[11px] space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] uppercase font-extrabold text-[#0B1F4B] flex items-center gap-1">
-                              <Briefcase className="w-3 h-3 text-[#F5A623]" />
-                              Company JD / Hiring Requirement
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              {client.agreementDetails && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setExpandedJdClientIds((prev) => ({
-                                      ...prev,
-                                      [client.id]: !prev[client.id],
-                                    }))
-                                  }
-                                  className="min-h-[28px] px-1.5 text-[10px] font-bold text-[#0B1F4B] hover:underline cursor-pointer"
-                                >
-                                  {expandedJdClientIds[client.id] ? 'Hide JD' : 'Full JD'}
-                                </button>
+                            <MessageSquare className="w-3 h-3 text-[#F5A623] shrink-0" />
+                            <span className="truncate">
+                              {latestRemark ? (
+                                <HighlightMatch text={latestRemark} query={debouncedSearch} />
+                              ) : (
+                                'No remarks recorded yet.'
                               )}
-                              {canManageClients && (
-                                <button
-                                  type="button"
-                                  onClick={() => openQuickEditJdModal(client)}
-                                  className="min-h-[28px] px-2 py-0.5 rounded bg-[#0B1F4B] hover:bg-[#163270] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                                  title="Edit Company JD"
-                                >
-                                  <Edit className="w-2.5 h-2.5 text-[#F5A623]" />
-                                  <span>Edit JD</span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {client.agreementDetails ? (
-                            expandedJdClientIds[client.id] ? (
-                              <div className="space-y-1 pt-0.5 text-slate-800">
-                                {client.agreementDetails
-                                  .split(/\||\n/)
-                                  .map((s) => s.trim())
-                                  .filter(Boolean)
-                                  .map((line, idx) => (
-                                    <p key={idx} className="flex items-start gap-1.5 leading-snug">
-                                      <span className="text-[#F5A623] font-bold">•</span>
-                                      <span>
-                                        <HighlightMatch text={line} query={debouncedSearch} />
-                                      </span>
-                                    </p>
-                                  ))}
-                              </div>
-                            ) : (
-                              <p
-                                onClick={() =>
-                                  setExpandedJdClientIds((prev) => ({
-                                    ...prev,
-                                    [client.id]: true,
-                                  }))
-                                }
-                                title={client.agreementDetails}
-                                className="text-slate-800 line-clamp-2 font-medium cursor-pointer"
-                              >
-                                <HighlightMatch
-                                  text={client.agreementDetails}
-                                  query={debouncedSearch}
-                                />
-                              </p>
-                            )
-                          ) : (
-                            <p className="text-slate-500 italic">
-                              No JD added yet.{' '}
-                              {canManageClients ? 'Click "Edit JD" to add requirements.' : ''}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Latest Remark */}
-                        <div
-                          title={latestRemark || 'No remarks logged yet'}
-                          className="p-2.5 rounded-lg bg-amber-50/70 border border-amber-200 text-[11px]"
-                        >
-                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 mb-0.5">
-                            <span className="flex items-center gap-1">
-                              <MessageSquare className="w-3 h-3 text-[#F5A623]" />
-                              Latest Remark
                             </span>
-                            {sortedRemarks[0] && (
-                              <span>{formatIndianDate(sortedRemarks[0].createdAt)}</span>
-                            )}
-                          </div>
-                          <p className="text-slate-800 truncate font-medium">
-                            {latestRemark ? (
-                              <HighlightMatch text={latestRemark} query={debouncedSearch} />
-                            ) : (
-                              'No remarks recorded yet.'
-                            )}
                           </p>
                         </div>
 
-                        {/* Card Footer Actions */}
-                        <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-200 flex-wrap">
+                        {/* Compact Card Footer Actions */}
+                        <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 flex-wrap">
                           <button
                             onClick={() => setActiveProfileClient(client)}
-                            className="min-h-[38px] px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#0B1F4B] border border-blue-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                            className="min-h-[34px] px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#0B1F4B] border border-blue-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <span>View Profile</span>
                             <ChevronRight className="w-3.5 h-3.5" />
@@ -1245,10 +1098,10 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                             {canCreateTasks && (
                               <button
                                 onClick={() => setReminderClient(client)}
-                                className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg text-amber-700 hover:bg-amber-50 border border-slate-200 flex items-center justify-center cursor-pointer"
+                                className="min-h-[34px] min-w-[34px] p-1 rounded-lg text-amber-700 hover:bg-amber-50 border border-slate-200 flex items-center justify-center cursor-pointer"
                                 title="Set Follow-up Reminder"
                               >
-                                <Bell className="w-4 h-4" />
+                                <Bell className="w-3.5 h-3.5" />
                               </button>
                             )}
 
@@ -1260,18 +1113,18 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                     setQuickRemarkText('');
                                     setQuickRemarkError('');
                                   }}
-                                  className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg text-[#0B1F4B] hover:bg-blue-50 border border-slate-200 flex items-center justify-center cursor-pointer"
+                                  className="min-h-[34px] min-w-[34px] p-1 rounded-lg text-[#0B1F4B] hover:bg-blue-50 border border-slate-200 flex items-center justify-center cursor-pointer"
                                   title="Add Remark"
                                 >
-                                  <MessageSquarePlus className="w-4 h-4" />
+                                  <MessageSquarePlus className="w-3.5 h-3.5" />
                                 </button>
 
                                 <button
                                   onClick={() => openMoveModal(client)}
-                                  className="min-h-[38px] px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-900 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                  className="min-h-[34px] px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-900 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                                   title="Move to another section"
                                 >
-                                  <ArrowRightLeft className="w-3.5 h-3.5 text-[#F5A623]" />
+                                  <ArrowRightLeft className="w-3 h-3 text-[#F5A623]" />
                                   <span>Move</span>
                                 </button>
 
@@ -1280,10 +1133,10 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                                     setClientToEdit(client);
                                     setIsFormModalOpen(true);
                                   }}
-                                  className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer"
+                                  className="min-h-[34px] min-w-[34px] p-1 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer"
                                   title="Edit Company"
                                 >
-                                  <Edit className="w-4 h-4" />
+                                  <Edit className="w-3.5 h-3.5" />
                                 </button>
                               </>
                             )}
@@ -1291,10 +1144,10 @@ export const ClientsModule: React.FC<ClientsModuleProps> = ({
                             {isAdmin && (
                               <button
                                 onClick={() => openDeleteModal(client)}
-                                className="min-h-[38px] min-w-[38px] p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-slate-200 flex items-center justify-center cursor-pointer"
+                                className="min-h-[34px] min-w-[34px] p-1 rounded-lg text-rose-600 hover:bg-rose-50 border border-slate-200 flex items-center justify-center cursor-pointer"
                                 title="Delete Company"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
                           </div>

@@ -69,6 +69,11 @@ export interface Candidate {
   jobTitle?: string;
   clientId?: string;
   clientName?: string;
+  workProfile?: string;
+  workProfileIsCustom?: boolean;
+  entryDate?: string; // ISO string converted from Firestore server timestamp
+  enteredBy?: string; // Name of user who entered the candidate
+  enteredByUserId?: string;
   expectedJoiningDate?: string; // Shown when status is Selected or Offered
   deletedAt?: string; // For 30-day trash
   createdAt: string;
@@ -103,6 +108,30 @@ export interface ClientRemark {
   createdAt: string;
 }
 
+export interface CompanyHiringRequirement {
+  id: string;
+  profile: string;
+  profileIsCustom?: boolean;
+  location: string;
+  salaryMin: number; // Rs per month
+  salaryMax: number; // Rs per month
+  extras?: string; // e.g. "Rs 500 attendance bonus + unlimited incentives + ESI as applicable"
+  openings?: number;
+  // Eligibility fields
+  gender?: string;
+  ageRange?: string;
+  qualification?: string;
+  experience?: string;
+  communication?: string;
+  // Benefits & Timing fields
+  esi?: string;
+  attendanceBonus?: string;
+  incentives?: string;
+  weeklyOff?: string;
+  workingHours?: string;
+  interviewTiming?: string;
+}
+
 export interface Client {
   id: string;
   name: string;
@@ -121,6 +150,7 @@ export interface Client {
   nextFollowUpDate?: string;
   agreementSignedDate?: string;
   remarks?: ClientRemark[];
+  hiringRequirements?: CompanyHiringRequirement[];
   createdAt: string;
   updatedAt?: string;
   assignedAccountManagerId: string;
@@ -223,6 +253,21 @@ export interface Interview {
   notes?: string;
 }
 
+export interface WorkProfileItem {
+  id: string;
+  name: string;
+  active: boolean;
+  order: number;
+}
+
+export interface WorkProfileCategory {
+  id: string;
+  name: string;
+  active: boolean;
+  order: number;
+  profiles: WorkProfileItem[];
+}
+
 export interface CompanySettings {
   companyName: string;
   tagline: string;
@@ -237,6 +282,7 @@ export interface CompanySettings {
   availableSkills: string[];
   availableSources: string[];
   availableIndustries: string[];
+  workProfileCategories?: WorkProfileCategory[];
 }
 
 export type ReminderPriority = 'High' | 'Medium' | 'Low';

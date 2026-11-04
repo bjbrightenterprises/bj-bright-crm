@@ -11,6 +11,7 @@ import {
   where,
   writeBatch,
   serverTimestamp,
+  Timestamp,
   Unsubscribe,
 } from 'firebase/firestore';
 import {
@@ -45,6 +46,8 @@ import {
   sectionToClientStatus,
 } from '../types/crm';
 import { buildSeedData } from './mockData';
+import { ensureWorkProfileCategories } from './workProfiles';
+import { getDefaultHiringRequirementsForCompany } from './companySearch';
 
 // Strip undefined properties recursively before sending to Firestore
 function stripUndefined<T>(obj: T): T {
@@ -52,8 +55,14 @@ function stripUndefined<T>(obj: T): T {
   if (Array.isArray(obj)) {
     return obj.map((item) => stripUndefined(item)) as unknown as T;
   }
-  // Preserve Firestore FieldValue sentinels (e.g. serverTimestamp())
-  if ((obj as any)._methodName) return obj;
+  // Preserve Firestore FieldValue sentinels (e.g. serverTimestamp()) and Timestamp/Date instances
+  if (
+    (obj as any)._methodName ||
+    typeof (obj as any).toDate === 'function' ||
+    obj instanceof Date
+  ) {
+    return obj;
+  }
   const cleaned: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj as Record<string, any>)) {
     if (v !== undefined) {
@@ -89,9 +98,19 @@ export function normalizeClientRecord(c: any): Client {
       }))
     : [];
 
+  const resolvedName = c.name || c.companyName || 'Unnamed Company';
+  const defaultReqs = getDefaultHiringRequirementsForCompany({
+    ...c,
+    name: resolvedName,
+  });
+  const resolvedHiringRequirements =
+    Array.isArray(c.hiringRequirements) && c.hiringRequirements.length > 0
+      ? c.hiringRequirements
+      : defaultReqs;
+
   return {
     ...c,
-    name: c.name || c.companyName || 'Unnamed Company',
+    name: resolvedName,
     contactPersons: rawContacts,
     agreementDetails: c.agreementDetails || 'Standard placement agreement',
     commissionPercent:
@@ -112,6 +131,7 @@ export function normalizeClientRecord(c: any): Client {
     agreementSignedDate:
       c.agreementSignedDate || (sec === 'Green' ? baseDate : undefined),
     remarks: rawRemarks,
+    hiringRequirements: resolvedHiringRequirements,
   };
 }
 
@@ -125,9 +145,23 @@ export function normalizeCandidateRecord(c: any): Candidate {
           : r
       )
     : c.remarks;
+
+  let resolvedEntryDate: string;
+  if (c.entryDate && typeof c.entryDate?.toDate === 'function') {
+    resolvedEntryDate = c.entryDate.toDate().toISOString();
+  } else if (typeof c.entryDate === 'string' && c.entryDate.trim().length > 0) {
+    resolvedEntryDate = c.entryDate;
+  } else if (c.serverCreatedAt && typeof c.serverCreatedAt?.toDate === 'function') {
+    resolvedEntryDate = c.serverCreatedAt.toDate().toISOString();
+  } else {
+    resolvedEntryDate = c.createdAt || new Date().toISOString();
+  }
+
   return {
     ...c,
     status: normalizedStatus,
+    entryDate: resolvedEntryDate,
+    enteredBy: c.enteredBy || c.assignedRecruiterName || 'Admin',
     ...(normalizedRemarks !== undefined ? { remarks: normalizedRemarks } : {}),
   } as Candidate;
 }
@@ -362,8 +396,17 @@ export const dataService = {
       (snap) => {
         onSyncMeta?.(snap.metadata.hasPendingWrites, snap.metadata.fromCache);
         const list = snap.docs
-          .map((d) => normalizeCandidateRecord({ ...(d.data() as Candidate), id: d.id }))
-          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          .map((d) =>
+            normalizeCandidateRecord({
+              ...(d.data({ serverTimestamps: 'estimate' }) as Candidate),
+              id: d.id,
+            })
+          )
+          .sort((a, b) =>
+            (b.entryDate || b.createdAt || '').localeCompare(
+              a.entryDate || a.createdAt || ''
+            )
+          );
         cachedCandidates = list;
         onData(list);
       },
@@ -580,9 +623,13 @@ export const dataService = {
       docRef,
       (snap) => {
         if (snap.exists()) {
-          const merged = {
+          const raw = snap.data() as Partial<CompanySettings>;
+          const merged: CompanySettings = {
             ...buildSeedData().companySettings,
-            ...(snap.data() as Partial<CompanySettings>),
+            ...raw,
+            workProfileCategories: ensureWorkProfileCategories(
+              raw.workProfileCategories
+            ),
           };
           cachedSettings = merged;
           onData(merged);
@@ -604,6 +651,8 @@ export const dataService = {
     const payload = stripUndefined({
       ...candidate,
       id: ref.id,
+      enteredBy: (candidate.enteredBy || candidate.assignedRecruiterName || 'Admin').trim(),
+      entryDate: serverTimestamp(),
       lastEditReason: 'Initial creation',
       serverCreatedAt: serverTimestamp(),
       serverUpdatedAt: serverTimestamp(),
@@ -620,17 +669,31 @@ export const dataService = {
   async updateCandidateDoc(
     id: string,
     updates: Partial<Candidate>,
-    editReason: string = 'Record updated'
+    editReason: string = 'Record updated',
+    isAdminUser: boolean = false
   ): Promise<void> {
     const cleanReason =
       editReason && editReason.trim().length > 0
         ? editReason.trim()
         : 'Record updated';
+    const sanitizedUpdates: Record<string, any> = { ...updates };
+    if (!isAdminUser) {
+      delete sanitizedUpdates.entryDate;
+      delete sanitizedUpdates.enteredBy;
+      delete sanitizedUpdates.enteredByUserId;
+    } else if (typeof sanitizedUpdates.entryDate === 'string') {
+      const parsedDate = new Date(sanitizedUpdates.entryDate);
+      if (!isNaN(parsedDate.getTime())) {
+        sanitizedUpdates.entryDate = Timestamp.fromDate(parsedDate);
+      } else {
+        delete sanitizedUpdates.entryDate;
+      }
+    }
     try {
       await updateDoc(
         doc(db, 'candidates', id),
         stripUndefined({
-          ...updates,
+          ...sanitizedUpdates,
           lastEditReason: cleanReason,
           serverUpdatedAt: serverTimestamp(),
         })

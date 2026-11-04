@@ -70,6 +70,7 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
     { key: 'fullName', label: 'Full Name', required: true, example: 'Aarav Sharma' },
     { key: 'phone', label: 'Mobile Number (+91)', required: true, example: '+91 98110 12345' },
     { key: 'email', label: 'Email Address', required: true, example: 'aarav.sharma@example.com' },
+    { key: 'workProfile', label: 'Work Profile', example: 'Tele Sales Executive' },
     { key: 'city', label: 'Current City', example: 'Noida' },
     { key: 'currentCompany', label: 'Current Organization', example: 'TCS' },
     { key: 'experienceYears', label: 'Experience (Years)', example: '5.5' },
@@ -86,22 +87,26 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
   ];
 
   const clientFields: ColumnMappingField[] = [
-    { key: 'name', label: 'Company Name', required: true, example: 'HCL Technologies' },
-    { key: 'industry', label: 'Industry Sector', example: 'Information Technology & Services' },
+    { key: 'name', label: 'Company Name', required: true, example: 'Smile India Trust' },
+    { key: 'hiringProfile', label: 'Profile', example: 'Client Relationship Associate (CRA) - Outbound Telecalling' },
+    { key: 'hiringLocation', label: 'Location', example: 'A-100, Sector 4, near Sector 16 Metro Station, Noida' },
+    { key: 'hiringSalary', label: 'Salary (Rs per month)', example: '15100 or 13000 - 18000' },
+    { key: 'hiringExtras', label: 'Extras', example: '+ Rs 500 attendance bonus + unlimited incentives + ESI' },
+    { key: 'industry', label: 'Industry Sector', example: 'NGO / Non-Profit & Social Welfare' },
     { key: 'city', label: 'City', required: true, example: 'Noida' },
-    { key: 'address', label: 'Corporate Address', example: 'Plot 3A, Sector 126' },
-    { key: 'website', label: 'Website URL', example: 'https://www.hcltech.com' },
-    { key: 'contactName', label: 'Primary Contact Person', example: 'Vikas Malhotra' },
-    { key: 'contactEmail', label: 'Contact Email', example: 'vikas.m@hcl.com' },
-    { key: 'contactPhone', label: 'Contact Phone', example: '9810123456' },
+    { key: 'address', label: 'Corporate Address', example: 'A-100, Sector 4, Noida' },
+    { key: 'website', label: 'Website URL', example: 'https://smileindiatrust.org' },
+    { key: 'contactName', label: 'Primary Contact Person', example: 'Neha' },
+    { key: 'contactEmail', label: 'Contact Email', example: 'neha.hr@smileindiatrust.org' },
+    { key: 'contactPhone', label: 'Contact Phone', example: '9084476832' },
     { key: 'commissionPercent', label: 'Commission Fee %', example: '8.33' },
-    { key: 'paymentTerms', label: 'Payment Terms', example: '30 days net' },
+    { key: 'paymentTerms', label: 'Payment Terms', example: '30 Days Post Joining' },
     { key: 'section', label: 'Section', example: 'Green / Blue / Red' },
     { key: 'enquiryDate', label: 'Enquiry Date', example: '2026-09-01' },
     { key: 'lastContactedDate', label: 'Last Contacted', example: '2026-09-10' },
     { key: 'nextFollowUpDate', label: 'Next Follow-up', example: '2026-11-15' },
     { key: 'agreementSignedDate', label: 'Agreement Signed Date', example: '2026-09-15' },
-    { key: 'latestRemark', label: 'Latest Remark', example: 'Agreement signed for Q4 mandates' },
+    { key: 'latestRemark', label: 'Latest Remark', example: 'Agreement signed for mandates' },
   ];
 
   const jobFields: ColumnMappingField[] = [
@@ -335,32 +340,57 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
       } else if (entityType === 'clients') {
         const validClients = validatedRows
           .filter((r) => r.isValid)
-          .map((r) => ({
-            name: r.data.name,
-            industry: r.data.industry || 'Information Technology & Services',
-            city: r.data.city || 'Noida',
-            address: r.data.address || 'Corporate Park',
-            website: r.data.website || 'https://example.com',
-            contactPersons: r.data.contactName
-              ? [
-                  {
-                    id: `cp_${Date.now()}`,
-                    name: r.data.contactName,
-                    designation: 'HR Lead',
-                    phone: r.data.contactPhone || '9811000000',
-                    email: r.data.contactEmail || 'hr@client.com',
-                  },
-                ]
-              : [],
-            commissionPercent: Number(r.data.commissionPercent) || 8.33,
-            paymentTerms: r.data.paymentTerms || '30 days net',
-            section: (r.data.section as any) || 'Green',
-            enquiryDate: r.data.enquiryDate || undefined,
-            lastContactedDate: r.data.lastContactedDate || undefined,
-            nextFollowUpDate: r.data.nextFollowUpDate || undefined,
-            agreementSignedDate: r.data.agreementSignedDate || undefined,
-            latestRemark: r.data.latestRemark || undefined,
-          }));
+          .map((r, idx) => {
+            const rawSal = String(r.data.hiringSalary || '').replace(/,/g, '');
+            const salMatches = rawSal.match(/\d+/g);
+            const sMin = salMatches && salMatches[0] ? Number(salMatches[0]) : 15000;
+            const sMax = salMatches && salMatches[1] ? Number(salMatches[1]) : sMin;
+            const loc =
+              r.data.hiringLocation ||
+              (r.data.address && r.data.city
+                ? `${r.data.address}, ${r.data.city}`
+                : r.data.city || 'Noida');
+            const prof = r.data.hiringProfile || 'Telecaller (Outbound)';
+            const extras = r.data.hiringExtras || '';
+
+            return {
+              name: r.data.name,
+              industry: r.data.industry || 'Information Technology & Services',
+              city: r.data.city || 'Noida',
+              address: r.data.address || loc,
+              website: r.data.website || 'https://example.com',
+              contactPersons: r.data.contactName
+                ? [
+                    {
+                      id: `cp_${Date.now()}_${idx}`,
+                      name: r.data.contactName,
+                      designation: 'HR Lead',
+                      phone: r.data.contactPhone || '9811000000',
+                      email: r.data.contactEmail || 'hr@client.com',
+                    },
+                  ]
+                : [],
+              hiringRequirements: [
+                {
+                  id: `req_imp_${Date.now()}_${idx}`,
+                  profile: prof,
+                  location: loc,
+                  salaryMin: Math.min(sMin, sMax),
+                  salaryMax: Math.max(sMin, sMax),
+                  extras,
+                  openings: 1,
+                },
+              ],
+              commissionPercent: Number(r.data.commissionPercent) || 8.33,
+              paymentTerms: r.data.paymentTerms || '30 days net',
+              section: (r.data.section as any) || 'Green',
+              enquiryDate: r.data.enquiryDate || undefined,
+              lastContactedDate: r.data.lastContactedDate || undefined,
+              nextFollowUpDate: r.data.nextFollowUpDate || undefined,
+              agreementSignedDate: r.data.agreementSignedDate || undefined,
+              latestRemark: r.data.latestRemark || undefined,
+            };
+          });
 
         added = bulkImportClients(validClients);
       } else {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Users,
   Search,
@@ -15,6 +15,11 @@ import {
   Eye,
   Trash2,
   Bell,
+  Briefcase,
+  Calendar,
+  ArrowUpDown,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import { Candidate, CandidateStatus } from '../../types/crm';
 import { useCRM } from '../../context/CRMContext';
@@ -22,8 +27,17 @@ import { CandidateProfileModal } from './CandidateProfileModal';
 import { CandidateFormModal } from './CandidateFormModal';
 import { ExcelCsvImportModal } from '../common/ExcelCsvImportModal';
 import { ExcelExportModal } from '../common/ExcelExportModal';
-import { CANDIDATE_EXPORT_COLUMNS, generateCandidatesSummarySheet } from '../../lib/excelModuleConfigs';
+import {
+  CANDIDATE_EXPORT_COLUMNS,
+  generateCandidatesSummarySheet,
+} from '../../lib/excelModuleConfigs';
 import { SetReminderModal } from '../reminders/SetReminderModal';
+import {
+  ensureWorkProfileCategories,
+  formatISTDateTime,
+  EntryDateFilterOption,
+  matchesEntryDateFilter,
+} from '../../lib/workProfiles';
 
 interface CandidatesModuleProps {
   onScheduleInterviewForCandidate: (candidate: Candidate) => void;
@@ -44,9 +58,22 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     openStatusRemarkModal,
   } = useCRM();
 
-  // Filters
+  // Search & Filters
   const [search, setSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
+  const [selectedWorkProfiles, setSelectedWorkProfiles] = useState<string[]>([]);
+  const [workProfileFilterSearch, setWorkProfileFilterSearch] = useState('');
+  const [isWorkProfileFilterOpen, setIsWorkProfileFilterOpen] = useState(false);
+  const workProfileFilterRef = useRef<HTMLDivElement>(null);
+
+  // Entry Date quick filter & Custom range
+  const [entryDateFilter, setEntryDateFilter] = useState<EntryDateFilterOption>('All');
+  const [customEntryFrom, setCustomEntryFrom] = useState('');
+  const [customEntryTo, setCustomEntryTo] = useState('');
+
+  // Entry Date column sort (default: newest first)
+  const [entryDateSortOrder, setEntryDateSortOrder] = useState<'desc' | 'asc'>('desc');
+
   const [selectedSource, setSelectedSource] = useState<string>('All');
   const [selectedCity, setSelectedCity] = useState<string>('All');
   const [selectedSkill, setSelectedSkill] = useState<string>('All');
@@ -71,6 +98,19 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [reminderCandidate, setReminderCandidate] = useState<Candidate | null>(null);
 
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (
+        workProfileFilterRef.current &&
+        !workProfileFilterRef.current.contains(e.target as Node)
+      ) {
+        setIsWorkProfileFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
   // Status options
   const statusTabs: (CandidateStatus | 'All')[] = [
     'All',
@@ -85,6 +125,63 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     'On Hold',
   ];
 
+  const entryDateQuickOptions: EntryDateFilterOption[] = [
+    'All',
+    'Today',
+    'Yesterday',
+    'This Week',
+    'This Month',
+    'Custom',
+  ];
+
+  // Grouped work profiles for multi-select filter (including any custom profiles present on candidates)
+  const filterWorkProfileGroups = useMemo(() => {
+    const cats = ensureWorkProfileCategories(companySettings.workProfileCategories).filter(
+      (c) => c.active && c.name.toLowerCase() !== 'other'
+    );
+    const knownSet = new Set<string>();
+    cats.forEach((c) =>
+      c.profiles.forEach((p) => {
+        if (p.active) knownSet.add(p.name);
+      })
+    );
+
+    const customInUse = new Set<string>();
+    visibleCandidates.forEach((cand) => {
+      if (cand.workProfile && !knownSet.has(cand.workProfile)) {
+        customInUse.add(cand.workProfile);
+      }
+    });
+
+    const groups = cats.map((c) => ({
+      category: c.name,
+      profiles: c.profiles.filter((p) => p.active).map((p) => p.name),
+    }));
+
+    if (customInUse.size > 0) {
+      groups.push({
+        category: 'Custom / Other Profiles',
+        profiles: Array.from(customInUse).sort(),
+      });
+    }
+
+    const q = workProfileFilterSearch.trim().toLowerCase();
+    if (!q) return groups;
+    return groups
+      .map((g) => ({
+        category: g.category,
+        profiles: g.profiles.filter(
+          (p) =>
+            p.toLowerCase().includes(q) || g.category.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((g) => g.profiles.length > 0);
+  }, [
+    companySettings.workProfileCategories,
+    visibleCandidates,
+    workProfileFilterSearch,
+  ]);
+
   // Unique cities in data
   const uniqueCities = useMemo(() => {
     const set = new Set<string>();
@@ -95,15 +192,26 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
   }, [visibleCandidates]);
 
   const activeFilterCount =
+    (selectedWorkProfiles.length > 0 ? 1 : 0) +
+    (entryDateFilter !== 'All' ? 1 : 0) +
     (selectedSource !== 'All' ? 1 : 0) +
     (selectedCity !== 'All' ? 1 : 0) +
     (selectedSkill !== 'All' ? 1 : 0) +
     (maxExpectedSalary < 50 ? 1 : 0) +
     (minExp > 0 ? 1 : 0);
 
-  // Filtered Candidates
+  const toggleWorkProfileFilterItem = (profileName: string) => {
+    setSelectedWorkProfiles((prev) =>
+      prev.includes(profileName)
+        ? prev.filter((p) => p !== profileName)
+        : [...prev, profileName]
+    );
+    setCurrentPage(1);
+  };
+
+  // Filtered & Sorted Candidates
   const filteredCandidates = useMemo(() => {
-    return visibleCandidates.filter((cand) => {
+    const filtered = visibleCandidates.filter((cand) => {
       const q = search.toLowerCase().trim();
       const matchesSearch =
         !q ||
@@ -111,13 +219,36 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         cand.phone.includes(q) ||
         cand.email.toLowerCase().includes(q) ||
         cand.currentCompany.toLowerCase().includes(q) ||
+        (cand.workProfile && cand.workProfile.toLowerCase().includes(q)) ||
+        (cand.enteredBy && cand.enteredBy.toLowerCase().includes(q)) ||
         cand.skills.some((s) => s.toLowerCase().includes(q)) ||
         (cand.remarks && cand.remarks.some((r) => r.text.toLowerCase().includes(q)));
 
       if (!matchesSearch) return false;
       if (selectedStatus !== 'All' && cand.status !== selectedStatus) return false;
+
+      if (selectedWorkProfiles.length > 0) {
+        const candWp = (cand.workProfile || '').trim();
+        if (!candWp || !selectedWorkProfiles.includes(candWp)) return false;
+      }
+
+      if (
+        !matchesEntryDateFilter(
+          cand.entryDate,
+          cand.createdAt,
+          entryDateFilter,
+          customEntryFrom,
+          customEntryTo
+        )
+      ) {
+        return false;
+      }
+
       if (selectedSource !== 'All' && cand.source !== selectedSource) return false;
-      if (selectedCity !== 'All' && !cand.city.toLowerCase().includes(selectedCity.toLowerCase()))
+      if (
+        selectedCity !== 'All' &&
+        !cand.city.toLowerCase().includes(selectedCity.toLowerCase())
+      )
         return false;
       if (
         selectedSkill !== 'All' &&
@@ -129,10 +260,21 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
 
       return true;
     });
+
+    return filtered.sort((a, b) => {
+      const timeA = new Date(a.entryDate || a.createdAt || 0).getTime();
+      const timeB = new Date(b.entryDate || b.createdAt || 0).getTime();
+      return entryDateSortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+    });
   }, [
     visibleCandidates,
     search,
     selectedStatus,
+    selectedWorkProfiles,
+    entryDateFilter,
+    customEntryFrom,
+    customEntryTo,
+    entryDateSortOrder,
     selectedSource,
     selectedCity,
     selectedSkill,
@@ -157,7 +299,10 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       const pageIds = new Set(paginatedCandidates.map((c) => c.id));
       setSelectedCandidateIds((prev) => prev.filter((id) => !pageIds.has(id)));
     } else {
-      const combined = new Set([...selectedCandidateIds, ...paginatedCandidates.map((c) => c.id)]);
+      const combined = new Set([
+        ...selectedCandidateIds,
+        ...paginatedCandidates.map((c) => c.id),
+      ]);
       setSelectedCandidateIds(Array.from(combined));
     }
   };
@@ -185,7 +330,11 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
 
   const handleBulkDelete = () => {
     if (selectedCandidateIds.length === 0) return;
-    if (confirm(`Are you sure you want to delete ${selectedCandidateIds.length} selected candidates?`)) {
+    if (
+      confirm(
+        `Are you sure you want to delete ${selectedCandidateIds.length} selected candidates?`
+      )
+    ) {
       bulkDeleteCandidates(selectedCandidateIds);
       setSelectedCandidateIds([]);
     }
@@ -202,6 +351,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       'Full Name',
       'Phone Number',
       'Email Address',
+      'Work Profile',
       'City',
       'Current Organization',
       'Current CTC LPA',
@@ -212,12 +362,15 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       'Sourcing Channel',
       'Status',
       'Assigned Recruiter',
+      'Entry Date (IST)',
+      'Entered By',
     ];
 
     const rows = listToExport.map((c) => [
       `"${c.fullName}"`,
       `"${c.phone}"`,
       `"${c.email}"`,
+      `"${c.workProfile || ''}"`,
       `"${c.city}"`,
       `"${c.currentCompany}"`,
       c.currentSalaryLPA,
@@ -228,6 +381,8 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       `"${c.source}"`,
       `"${c.status}"`,
       `"${c.assignedRecruiterName}"`,
+      `"${formatISTDateTime(c.entryDate || c.createdAt)}"`,
+      `"${c.enteredBy || c.assignedRecruiterName}"`,
     ]);
 
     const csvContent = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -235,7 +390,9 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `BJ_Bright_${onlySelected ? 'Selected_' : ''}Candidates_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `BJ_Bright_${onlySelected ? 'Selected_' : ''}Candidates_${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -243,7 +400,8 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
 
   const getStatusSelectStyle = (status: CandidateStatus) => {
     if (status === 'Placed') return 'bg-emerald-100 text-emerald-900 border-emerald-300';
-    if (status === 'Offered' || status === 'Selected') return 'bg-amber-100 text-amber-900 border-amber-300';
+    if (status === 'Offered' || status === 'Selected')
+      return 'bg-amber-100 text-amber-900 border-amber-300';
     if (status === 'Rejected') return 'bg-rose-100 text-rose-900 border-rose-300';
     return 'bg-blue-50 text-[#0B1F4B] border-blue-200';
   };
@@ -331,13 +489,14 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
 
       {/* Filter and Search Bar */}
       <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-slate-200 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+        <div className="flex flex-col lg:flex-row gap-2.5 sm:gap-3">
+          {/* Search Input */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="search"
               inputMode="search"
-              placeholder="Search by candidate name, phone (+91), email, skills, or company..."
+              placeholder="Search by name, phone (+91), email, work profile, skills, or company..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -345,6 +504,94 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
               }}
               className="w-full min-h-[44px] pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
             />
+          </div>
+
+          {/* Multi-select Work Profile Filter Dropdown */}
+          <div ref={workProfileFilterRef} className="relative sm:w-64">
+            <button
+              type="button"
+              onClick={() => setIsWorkProfileFilterOpen((prev) => !prev)}
+              className={`w-full min-h-[44px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                selectedWorkProfiles.length > 0
+                  ? 'bg-blue-50 border-[#0B1F4B] text-[#0B1F4B]'
+                  : 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5 truncate">
+                <Briefcase className="w-3.5 h-3.5 text-[#F5A623] shrink-0" />
+                <span className="truncate">
+                  {selectedWorkProfiles.length === 0
+                    ? 'Work Profile: All'
+                    : selectedWorkProfiles.length === 1
+                    ? selectedWorkProfiles[0]
+                    : `${selectedWorkProfiles.length} Work Profiles`}
+                </span>
+              </span>
+              <ChevronDown className="w-4 h-4 shrink-0 text-slate-500" />
+            </button>
+
+            {isWorkProfileFilterOpen && (
+              <div className="absolute left-0 right-0 sm:w-80 mt-1.5 bg-white border border-slate-300 rounded-xl shadow-2xl z-40 overflow-hidden">
+                <div className="p-2 bg-slate-50 border-b border-slate-200 space-y-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={workProfileFilterSearch}
+                      onChange={(e) => setWorkProfileFilterSearch(e.target.value)}
+                      placeholder="Filter work profiles..."
+                      className="w-full min-h-[34px] pl-8 pr-3 py-1 rounded-lg bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+                    />
+                  </div>
+                  {selectedWorkProfiles.length > 0 && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-[#0B1F4B]">
+                        {selectedWorkProfiles.length} selected
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedWorkProfiles([]);
+                          setCurrentPage(1);
+                        }}
+                        className="text-rose-700 hover:underline font-bold cursor-pointer"
+                      >
+                        Clear selection
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
+                  {filterWorkProfileGroups.map((group) => (
+                    <div key={group.category} className="py-1">
+                      <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#0B1F4B] bg-slate-100/80">
+                        {group.category}
+                      </div>
+                      {group.profiles.map((prof) => {
+                        const checked = selectedWorkProfiles.includes(prof);
+                        return (
+                          <label
+                            key={prof}
+                            className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-slate-800 hover:bg-blue-50 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleWorkProfileFilterItem(prof)}
+                              className="w-4 h-4 rounded border-slate-300 text-[#0B1F4B] accent-[#0B1F4B]"
+                            />
+                            <span className={checked ? 'font-bold text-[#0B1F4B]' : ''}>
+                              {prof}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -365,6 +612,10 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                 onClick={() => {
                   setSearch('');
                   setSelectedStatus('All');
+                  setSelectedWorkProfiles([]);
+                  setEntryDateFilter('All');
+                  setCustomEntryFrom('');
+                  setCustomEntryTo('');
                   setSelectedSource('All');
                   setSelectedCity('All');
                   setSelectedSkill('All');
@@ -378,6 +629,81 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Entry Date Quick Filter Bar */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+          <span className="inline-flex items-center gap-1.5 font-bold text-slate-700 mr-1">
+            <Calendar className="w-3.5 h-3.5 text-[#0B1F4B]" />
+            <span>Entry Date:</span>
+          </span>
+          {entryDateQuickOptions.map((opt) => {
+            const active = entryDateFilter === opt;
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  setEntryDateFilter(opt);
+                  setCurrentPage(1);
+                }}
+                className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                  active
+                    ? 'bg-[#0B1F4B] border-[#0B1F4B] text-white'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
+
+          {entryDateFilter === 'Custom' && (
+            <div className="flex flex-wrap items-center gap-2 ml-1">
+              <input
+                type="date"
+                value={customEntryFrom}
+                onChange={(e) => {
+                  setCustomEntryFrom(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs text-slate-900"
+                title="Entry Date From (IST)"
+              />
+              <span className="text-slate-500 font-semibold">to</span>
+              <input
+                type="date"
+                value={customEntryTo}
+                onChange={(e) => {
+                  setCustomEntryTo(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs text-slate-900"
+                title="Entry Date To (IST)"
+              />
+            </div>
+          )}
+
+          {/* Selected Work Profile pills */}
+          {selectedWorkProfiles.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+              {selectedWorkProfiles.map((wp) => (
+                <span
+                  key={wp}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-[#0B1F4B] text-[11px] font-bold"
+                >
+                  <span>{wp}</span>
+                  <button
+                    type="button"
+                    onClick={() => toggleWorkProfileFilterItem(wp)}
+                    className="hover:text-rose-600 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Advanced Filters Expandable Drawer */}
@@ -486,9 +812,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             <span className="w-7 h-7 rounded-lg bg-[#F5A623] text-slate-950 font-extrabold flex items-center justify-center">
               {selectedCandidateIds.length}
             </span>
-            <span className="font-bold">
-              {selectedCandidateIds.length} Selected
-            </span>
+            <span className="font-bold">{selectedCandidateIds.length} Selected</span>
             <button
               onClick={() => setSelectedCandidateIds([])}
               className="text-amber-300 hover:underline text-xs font-semibold cursor-pointer ml-1"
@@ -599,12 +923,20 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                       <p className="text-xs text-slate-600 truncate">
                         {cand.currentCompany} • {cand.experienceYears} Yrs
                       </p>
+                      {cand.workProfile && (
+                        <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-[#0B1F4B] text-[11px] font-bold">
+                          <Briefcase className="w-3 h-3 text-[#F5A623]" />
+                          <span>{cand.workProfile}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <select
                     value={cand.status}
-                    onChange={(e) => openStatusRemarkModal(cand, e.target.value as CandidateStatus)}
+                    onChange={(e) =>
+                      openStatusRemarkModal(cand, e.target.value as CandidateStatus)
+                    }
                     className={`min-h-[34px] text-xs font-bold rounded-lg px-2 py-1 border shrink-0 ${getStatusSelectStyle(
                       cand.status
                     )}`}
@@ -624,15 +956,36 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                 {/* Middle Info Grid */}
                 <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                   <div>
-                    <span className="text-[10px] font-bold uppercase text-slate-500 block">Expected / Cur CTC</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                      Expected / Cur CTC
+                    </span>
                     <span className="font-bold text-slate-900">
-                      ₹{cand.expectedSalaryLPA}L <span className="text-slate-500 font-normal">(₹{cand.currentSalaryLPA}L)</span>
+                      ₹{cand.expectedSalaryLPA}L{' '}
+                      <span className="text-slate-500 font-normal">
+                        (₹{cand.currentSalaryLPA}L)
+                      </span>
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold uppercase text-slate-500 block">City & Source</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                      City &amp; Source
+                    </span>
                     <span className="font-semibold text-slate-800 truncate block">
                       {cand.city} • {cand.source}
+                    </span>
+                  </div>
+                  <div className="col-span-2 pt-1.5 border-t border-slate-200 text-[11px] text-slate-600 flex items-center justify-between flex-wrap gap-1">
+                    <span>
+                      Entry:{' '}
+                      <strong className="text-slate-900">
+                        {formatISTDateTime(cand.entryDate || cand.createdAt)}
+                      </strong>
+                    </span>
+                    <span>
+                      By:{' '}
+                      <strong className="text-slate-900">
+                        {cand.enteredBy || cand.assignedRecruiterName}
+                      </strong>
                     </span>
                   </div>
                 </div>
@@ -729,13 +1082,27 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                     className="w-4 h-4 rounded border-slate-300 text-[#0B1F4B] accent-[#0B1F4B] cursor-pointer"
                   />
                 </th>
-                <th className="py-3.5 px-4 sticky-col-first">Candidate & Exp</th>
+                <th className="py-3.5 px-4 sticky-col-first">Candidate &amp; Exp</th>
+                <th className="py-3.5 px-4">Work Profile</th>
                 <th className="py-3.5 px-4">Contact Info</th>
-                <th className="py-3.5 px-4">Current Org & City</th>
+                <th className="py-3.5 px-4">Current Org &amp; City</th>
                 <th className="py-3.5 px-4">CTC (LPA)</th>
                 <th className="py-3.5 px-4">Skills</th>
                 <th className="py-3.5 px-4">Source</th>
                 <th className="py-3.5 px-4">Status</th>
+                <th className="py-3.5 px-4">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEntryDateSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                    }
+                    className="inline-flex items-center gap-1 uppercase font-extrabold text-[#0B1F4B] hover:underline cursor-pointer"
+                    title="Sort by Entry Date"
+                  >
+                    <span>Entry Date</span>
+                    <ArrowUpDown className="w-3.5 h-3.5 text-[#F5A623]" />
+                  </button>
+                </th>
                 <th className="py-3.5 px-4">Last Remark</th>
                 <th className="py-3.5 px-4">Recruiter</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
@@ -744,7 +1111,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             <tbody className="divide-y divide-slate-200">
               {paginatedCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-500">
+                  <td colSpan={13} className="py-12 text-center text-slate-500">
                     No candidates found matching the selected filter criteria.
                   </td>
                 </tr>
@@ -792,6 +1159,16 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                       </td>
 
                       <td className="py-3 px-4">
+                        {cand.workProfile ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-[#0B1F4B] border border-blue-200 font-bold text-[11px]">
+                            <span>{cand.workProfile}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">-</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4">
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5 font-semibold text-slate-900">
                             <Phone className="w-3 h-3 text-[#0B1F4B]" />
@@ -810,7 +1187,10 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                           </div>
                           <div className="flex items-center gap-1 text-[11px] text-slate-600">
                             <Mail className="w-3 h-3 text-slate-400" />
-                            <a href={`mailto:${cand.email}`} className="truncate max-w-[140px] hover:underline">
+                            <a
+                              href={`mailto:${cand.email}`}
+                              className="truncate max-w-[140px] hover:underline"
+                            >
                               {cand.email}
                             </a>
                           </div>
@@ -831,7 +1211,9 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                         <div className="font-bold text-slate-900">
                           ₹{cand.expectedSalaryLPA} LPA
                         </div>
-                        <div className="text-[11px] text-slate-600">Cur: ₹{cand.currentSalaryLPA} LPA</div>
+                        <div className="text-[11px] text-slate-600">
+                          Cur: ₹{cand.currentSalaryLPA} LPA
+                        </div>
                       </td>
 
                       <td className="py-3 px-4 max-w-xs">
@@ -861,7 +1243,9 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                       <td className="py-3 px-4">
                         <select
                           value={cand.status}
-                          onChange={(e) => openStatusRemarkModal(cand, e.target.value as CandidateStatus)}
+                          onChange={(e) =>
+                            openStatusRemarkModal(cand, e.target.value as CandidateStatus)
+                          }
                           className={`text-[11px] font-bold rounded-lg px-2 py-1 border transition-colors cursor-pointer ${getStatusSelectStyle(
                             cand.status
                           )}`}
@@ -878,9 +1262,29 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                         </select>
                       </td>
 
-                      <td className="py-3 px-4 max-w-[180px]" title={cand.remarks && cand.remarks.length > 0 ? cand.remarks[0].text : 'No remarks'}>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="font-semibold text-slate-900 text-[11px]">
+                          {formatISTDateTime(cand.entryDate || cand.createdAt)}
+                        </div>
+                        <div className="text-[10px] text-slate-600">
+                          By: {cand.enteredBy || cand.assignedRecruiterName}
+                        </div>
+                      </td>
+
+                      <td
+                        className="py-3 px-4 max-w-[160px]"
+                        title={
+                          cand.remarks && cand.remarks.length > 0
+                            ? cand.remarks[0].text
+                            : 'No remarks'
+                        }
+                      >
                         <span className="text-[11px] text-slate-700 truncate block">
-                          {cand.remarks && cand.remarks.length > 0 ? cand.remarks[0].text : <span className="text-slate-400 italic">No remarks</span>}
+                          {cand.remarks && cand.remarks.length > 0 ? (
+                            cand.remarks[0].text
+                          ) : (
+                            <span className="text-slate-400 italic">No remarks</span>
+                          )}
                         </span>
                       </td>
 
@@ -1004,7 +1408,9 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         columns={CANDIDATE_EXPORT_COLUMNS}
         filteredData={filteredCandidates}
         allAccessibleData={visibleCandidates}
-        filtersDescription={`Status: ${selectedStatus}, Search: "${search || 'All'}"`}
+        filtersDescription={`Status: ${selectedStatus}, Entry Date: ${entryDateFilter}, Work Profiles: ${
+          selectedWorkProfiles.length > 0 ? selectedWorkProfiles.join(', ') : 'All'
+        }, Search: "${search || 'All'}"`}
         summaryGenerator={generateCandidatesSummarySheet}
       />
 
@@ -1017,7 +1423,9 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         relatedName={reminderCandidate?.fullName}
         defaultTitle={
           reminderCandidate
-            ? `Follow up with ${reminderCandidate.fullName} regarding ${reminderCandidate.currentCompany || 'recruitment'}`
+            ? `Follow up with ${reminderCandidate.fullName} regarding ${
+                reminderCandidate.currentCompany || 'recruitment'
+              }`
             : undefined
         }
       />

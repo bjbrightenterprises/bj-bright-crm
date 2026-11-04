@@ -12,6 +12,14 @@ import {
   ExportColumnDef,
   getDateAnalysisHelpers,
 } from './excelExport';
+import {
+  formatISTDateTime,
+  getAllFlatWorkProfiles,
+} from './workProfiles';
+import {
+  getDefaultHiringRequirementsForCompany,
+  formatMonthlySalaryParts,
+} from './companySearch';
 
 
 /**
@@ -185,6 +193,34 @@ export const CANDIDATE_EXPORT_COLUMNS: ExportColumnDef[] = [
     dataType: 'Date',
     width: 20,
     getValue: (c: Candidate) => (c.expectedJoiningDate ? new Date(c.expectedJoiningDate) : ''),
+  },
+  {
+    key: 'workProfile',
+    header: 'Work Profile',
+    description: 'Candidate primary job role / work profile category',
+    allowedValues: 'Master work profile or custom Title Case profile',
+    dataType: 'Text',
+    width: 28,
+    validationList: getAllFlatWorkProfiles().map((p) => p.name),
+    getValue: (c: Candidate) => c.workProfile || '',
+  },
+  {
+    key: 'entryDate',
+    header: 'Entry Date',
+    description: 'Timestamp (IST) when the candidate record was entered in CRM',
+    allowedValues: 'DD/MM/YYYY, hh:mm AM/PM (IST)',
+    dataType: 'Text',
+    width: 26,
+    getValue: (c: Candidate) => formatISTDateTime(c.entryDate || c.createdAt),
+  },
+  {
+    key: 'enteredBy',
+    header: 'Entered By',
+    description: 'Name of the user who entered the candidate into CRM',
+    allowedValues: 'Staff member name',
+    dataType: 'Text',
+    width: 22,
+    getValue: (c: Candidate) => c.enteredBy || c.assignedRecruiterName || '',
   },
   // Extra helper columns for data analysts
   {
@@ -605,6 +641,75 @@ export const CLIENT_EXPORT_COLUMNS: ExportColumnDef[] = [
     dataType: 'Date',
     width: 18,
     getValue: (c: Client) => getDateAnalysisHelpers(c.createdAt, c.createdAt).createdDate,
+  },
+  {
+    key: 'hiringProfile',
+    header: 'Profile',
+    description: 'Hiring work profile(s) for the company Call Summary',
+    allowedValues: 'Master work profile or custom Title Case profile',
+    dataType: 'Text',
+    width: 32,
+    validationList: getAllFlatWorkProfiles().map((p) => p.name),
+    getValue: (c: Client) => {
+      const reqs =
+        c.hiringRequirements && c.hiringRequirements.length > 0
+          ? c.hiringRequirements
+          : getDefaultHiringRequirementsForCompany(c);
+      return reqs.map((r) => r.profile).join('; ');
+    },
+  },
+  {
+    key: 'hiringLocation',
+    header: 'Location',
+    description: 'Work location (city and area/address) for the hiring requirement',
+    allowedValues: 'City and area / address',
+    dataType: 'Text',
+    width: 32,
+    getValue: (c: Client) => {
+      const reqs =
+        c.hiringRequirements && c.hiringRequirements.length > 0
+          ? c.hiringRequirements
+          : getDefaultHiringRequirementsForCompany(c);
+      return reqs.map((r) => r.location).join('; ');
+    },
+  },
+  {
+    key: 'hiringSalary',
+    header: 'Salary',
+    description: 'Monthly salary in Rs per month with LPA equivalent',
+    allowedValues: 'e.g. Rs 15,100 per month (1.81 LPA)',
+    dataType: 'Text',
+    width: 28,
+    getValue: (c: Client) => {
+      const reqs =
+        c.hiringRequirements && c.hiringRequirements.length > 0
+          ? c.hiringRequirements
+          : getDefaultHiringRequirementsForCompany(c);
+      return reqs
+        .map((r) => {
+          const parts = formatMonthlySalaryParts(r.salaryMin, r.salaryMax);
+          return `${parts.rsText} (${parts.lpaText})`;
+        })
+        .join('; ');
+    },
+  },
+  {
+    key: 'hiringExtras',
+    header: 'Extras',
+    description: 'Salary extras note (bonus, incentives, ESI, etc.)',
+    allowedValues: 'e.g. + Rs 500 attendance bonus + unlimited incentives + ESI',
+    dataType: 'Text',
+    width: 34,
+    getValue: (c: Client) => {
+      const reqs =
+        c.hiringRequirements && c.hiringRequirements.length > 0
+          ? c.hiringRequirements
+          : getDefaultHiringRequirementsForCompany(c);
+      return reqs
+        .map((r) => r.extras || '')
+        .filter(Boolean)
+        .join('; ');
+    },
   },
 ];
 

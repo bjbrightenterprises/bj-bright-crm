@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   BarChart3,
+  Briefcase,
   Download,
   FileSpreadsheet,
   Printer,
@@ -14,6 +15,7 @@ import {
   PERFORMANCE_REPORT_EXPORT_COLUMNS,
   generatePerformanceSummarySheet,
 } from '../../lib/excelModuleConfigs';
+import { matchesEntryDateFilter } from '../../lib/workProfiles';
 
 export const ReportsAnalyticsModule: React.FC = () => {
   const {
@@ -39,10 +41,28 @@ export const ReportsAnalyticsModule: React.FC = () => {
     return users;
   }, [users, currentUser, isRecruiterOrHr]);
 
-  // Performance data calculation per user
+  // Performance data calculation per user (counting Candidates Added using entryDate)
   const performanceRows = useMemo(() => {
+    const filterMode = period === 'daily' ? 'Today' : 'This Week';
     return targetUsers.map((u) => {
       const userCands = candidates.filter((c) => c.assignedRecruiterId === u.id);
+      const enteredByUserCands = candidates.filter((c) =>
+        c.enteredByUserId
+          ? c.enteredByUserId === u.id
+          : c.enteredBy
+          ? c.enteredBy.toLowerCase() === u.name.toLowerCase()
+          : c.assignedRecruiterId === u.id
+      );
+      const periodAddedCands = enteredByUserCands.filter((c) =>
+        matchesEntryDateFilter(c.entryDate, c.createdAt, filterMode)
+      );
+      const prevAddedCands =
+        period === 'daily'
+          ? enteredByUserCands.filter((c) =>
+              matchesEntryDateFilter(c.entryDate, c.createdAt, 'Yesterday')
+            )
+          : [];
+
       const userInterviews = interviews.filter((i) => i.assignedToRecruiterId === u.id);
       const userSubmissions = pipeline.filter(
         (p) => p.assignedRecruiterId === u.id && p.stage === 'Submitted to Client'
@@ -53,7 +73,8 @@ export const ReportsAnalyticsModule: React.FC = () => {
         (r) => r.assignedToUserId === u.id && r.status === 'Completed'
       );
 
-      const prevCands = Math.max(0, userCands.length - 2);
+      const addedCount = periodAddedCands.length;
+      const prevCands = period === 'daily' ? prevAddedCands.length : Math.max(0, addedCount - 1);
       const prevInterviews = Math.max(0, userInterviews.length - 1);
       const prevJoinings = Math.max(0, userJoinings.length - 1);
 
@@ -62,8 +83,9 @@ export const ReportsAnalyticsModule: React.FC = () => {
         name: u.name,
         designation: u.designation || u.role.toUpperCase(),
         avatar: u.avatar,
-        candidatesAdded: userCands.length,
-        candidatesDiff: userCands.length - prevCands,
+        candidatesAdded: addedCount,
+        totalCandidatesAssigned: userCands.length,
+        candidatesDiff: addedCount - prevCands,
         interviews: userInterviews.length,
         interviewsDiff: userInterviews.length - prevInterviews,
         submitted: userSubmissions.length,
@@ -73,7 +95,34 @@ export const ReportsAnalyticsModule: React.FC = () => {
         tasksCompleted: userTasks.length,
       };
     });
-  }, [targetUsers, candidates, interviews, pipeline, reminders]);
+  }, [targetUsers, candidates, interviews, pipeline, reminders, period]);
+
+  // Work Profile summary breakdown
+  const workProfileBreakdown = useMemo(() => {
+    const filterMode = period === 'daily' ? 'Today' : 'This Week';
+    const visibleCandidates = isRecruiterOrHr
+      ? candidates.filter((c) => c.assignedRecruiterId === currentUser.id)
+      : candidates;
+    const map = new Map<string, { total: number; periodAdded: number; placed: number }>();
+
+    visibleCandidates.forEach((c) => {
+      const profile = (c.workProfile || '').trim() || 'Unspecified';
+      const entry = map.get(profile) || { total: 0, periodAdded: 0, placed: 0 };
+      entry.total += 1;
+      if (matchesEntryDateFilter(c.entryDate, c.createdAt, filterMode)) {
+        entry.periodAdded += 1;
+      }
+      if (c.status === 'Placed') {
+        entry.placed += 1;
+      }
+      map.set(profile, entry);
+    });
+
+    return Array.from(map.entries())
+      .map(([profile, stats]) => ({ profile, ...stats }))
+      .sort((a, b) => b.periodAdded - a.periodAdded || b.total - a.total)
+      .slice(0, 12);
+  }, [candidates, period, isRecruiterOrHr, currentUser.id]);
 
   // Totals
   const totals = useMemo(() => {
@@ -426,6 +475,43 @@ _Generated via ${companySettings.companyName} CRM (Noida Sec 62)_`;
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Work Profile Breakdown */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+            <Briefcase className="w-4 h-4 text-[#0B1F4B]" />
+            <span>Candidates by Work Profile ({period === 'daily' ? 'Today' : 'This Week'} &amp; Total Pool)</span>
+          </h3>
+          <span className="text-xs text-slate-600">Counted by Entry Date (IST)</span>
+        </div>
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {workProfileBreakdown.length === 0 ? (
+            <p className="text-xs text-slate-500 col-span-full">No candidate profiles recorded yet.</p>
+          ) : (
+            workProfileBreakdown.map((item) => (
+              <div
+                key={item.profile}
+                className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-extrabold text-slate-900 truncate" title={item.profile}>
+                    {item.profile}
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Added ({period === 'daily' ? 'Today' : 'This Week'}):{' '}
+                    <span className="font-bold text-[#0B1F4B]">{item.periodAdded}</span> • Placed:{' '}
+                    <span className="font-bold text-emerald-700">{item.placed}</span>
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-extrabold text-slate-900 shrink-0">
+                  {item.total}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

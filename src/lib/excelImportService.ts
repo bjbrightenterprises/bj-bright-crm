@@ -1,6 +1,11 @@
 import ExcelJS from 'exceljs';
 import { Candidate, Client, JobOpening, User } from '../types/crm';
 import { sanitizeCellValue, triggerFileDownload } from './excelExport';
+import {
+  getAllFlatWorkProfiles,
+  validateCustomWorkProfile,
+} from './workProfiles';
+import { dataService } from './dataService';
 
 export interface RowValidationResult {
   rowNumber: number;
@@ -57,6 +62,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
     { header: 'Source Channels', key: 'sources', width: 22 },
     { header: 'Metro Cities', key: 'cities', width: 20 },
     { header: 'Industries', key: 'industries', width: 28 },
+    { header: 'Work Profiles', key: 'workProfiles', width: 32 },
   ];
   listsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   listsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B1F4B' } };
@@ -65,14 +71,24 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
   const sources = ['Naukri', 'LinkedIn', 'Referral', 'Walk-in', 'Foundit', 'Direct', 'Internal Database'];
   const cities = ['Noida', 'Delhi NCR', 'Gurgaon', 'Bangalore', 'Mumbai', 'Pune', 'Hyderabad', 'Chennai', 'Remote'];
   const industries = ['Information Technology & Services', 'Fintech & Payments', 'E-Commerce & Retail', 'Banking & Financial Services', 'Healthcare & Pharma'];
+  const workProfiles = getAllFlatWorkProfiles(
+    dataService.getCompanySettings()?.workProfileCategories
+  ).map((p) => p.name);
 
-  const maxRows = Math.max(candidateStatuses.length, sources.length, cities.length, industries.length);
+  const maxRows = Math.max(
+    candidateStatuses.length,
+    sources.length,
+    cities.length,
+    industries.length,
+    workProfiles.length
+  );
   for (let i = 0; i < maxRows; i++) {
     listsSheet.addRow([
       candidateStatuses[i] || '',
       sources[i] || '',
       cities[i] || '',
       industries[i] || '',
+      workProfiles[i] || '',
     ]);
   }
 
@@ -86,6 +102,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       { header: 'Full Name *', key: 'fullName', width: 26 },
       { header: 'Mobile Number *', key: 'phone', width: 20 },
       { header: 'Email Address *', key: 'email', width: 28 },
+      { header: 'Work Profile *', key: 'workProfile', width: 28 },
       { header: 'Current City', key: 'city', width: 18 },
       { header: 'Current Company', key: 'currentCompany', width: 24 },
       { header: 'Experience Years', key: 'experienceYears', width: 18 },
@@ -99,6 +116,8 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       { header: 'Target Client', key: 'clientName', width: 24 },
       { header: 'Assigned Recruiter', key: 'assignedRecruiterName', width: 22 },
       { header: 'Expected Joining Date', key: 'expectedJoiningDate', width: 22 },
+      { header: 'Entry Date (Auto IST on Import)', key: 'entryDate', width: 26 },
+      { header: 'Entered By (Auto on Import)', key: 'enteredBy', width: 22 },
       { header: 'Remark', key: 'remark', width: 32 },
     ];
 
@@ -107,6 +126,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       'Rohit Saxena',
       '+91 98110 54321',
       'rohit.saxena@example.com',
+      'Tele Sales Executive',
       'Noida',
       'Cognizant',
       5.5,
@@ -120,33 +140,45 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       'Corporate Client',
       'Praveen Verma',
       '2026-11-15',
+      '',
+      '',
       'Interested, available for technical round',
     ]);
 
     // Format phone column as text explicitly
     dataSheet.getColumn(2).numFmt = '@';
 
-    // Dropdown validations
+    // Dropdown validations (D=Work Profile, E=City, L=Source, M=Status)
+    const wpCount = Math.max(2, workProfiles.length + 1);
     for (let r = 2; r <= 50; r++) {
-      dataSheet.getCell(`K${r}`).dataValidation = {
+      dataSheet.getCell(`D${r}`).dataValidation = {
         type: 'list',
         allowBlank: true,
-        formulae: ['Lists!$B$2:$B$8'],
+        formulae: [`Lists!$E$2:$E$${wpCount}`],
+      };
+      dataSheet.getCell(`E${r}`).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: ['Lists!$C$2:$C$10'],
       };
       dataSheet.getCell(`L${r}`).dataValidation = {
         type: 'list',
         allowBlank: true,
-        formulae: ['Lists!$A$2:$A$10'],
+        formulae: ['Lists!$B$2:$B$8'],
       };
-      dataSheet.getCell(`D${r}`).dataValidation = {
+      dataSheet.getCell(`M${r}`).dataValidation = {
         type: 'list',
         allowBlank: true,
-        formulae: ['Lists!$C$2:$C$10'],
+        formulae: ['Lists!$A$2:$A$10'],
       };
     }
   } else if (entityType === 'clients') {
     dataSheet.columns = [
       { header: 'Company Name *', key: 'name', width: 30 },
+      { header: 'Profile', key: 'hiringProfile', width: 30 },
+      { header: 'Location', key: 'hiringLocation', width: 32 },
+      { header: 'Salary (Rs per month)', key: 'hiringSalary', width: 24 },
+      { header: 'Extras', key: 'hiringExtras', width: 32 },
       { header: 'Industry Sector', key: 'industry', width: 26 },
       { header: 'City *', key: 'city', width: 20 },
       { header: 'Corporate Address', key: 'address', width: 32 },
@@ -165,31 +197,40 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
     ];
 
     dataSheet.addRow([
-      'Infosys Limited',
-      'Information Technology & Services',
+      'Smile India Trust',
+      'Client Relationship Associate (CRA) - Outbound Telecalling',
+      'A-100, Sector 4, near Sector 16 Metro Station, Noida',
+      '15100',
+      '+ Rs 500 attendance bonus + unlimited incentives + ESI as applicable',
+      'NGO / Non-Profit & Social Welfare',
       'Noida',
-      'Plot 44, Electronic City, Sector 62',
-      'https://www.infosys.com',
-      'Deepak Chopra',
-      '9811200000',
-      'deepak.c@infosys.com',
+      'A-100, Sector 4, near Sector 16 Metro Station, Noida',
+      'https://smileindiatrust.org',
+      'Neha',
+      '9084476832',
+      'neha.hr@smileindiatrust.org',
       8.33,
-      '30 days net',
+      '30 Days Post Joining',
       'Green',
       '2026-09-01',
       '2026-09-10',
       '2026-11-15',
       '2026-09-15',
-      'Agreement signed for Q4 hiring mandates.',
+      'Agreement signed for Outbound Telecalling CRA mandates.',
     ]);
 
     for (let r = 2; r <= 50; r++) {
       dataSheet.getCell(`B${r}`).dataValidation = {
         type: 'list',
         allowBlank: true,
+        formulae: [`Lists!$G$2:$G$${workProfiles.length + 1}`],
+      };
+      dataSheet.getCell(`F${r}`).dataValidation = {
+        type: 'list',
+        allowBlank: true,
         formulae: ['Lists!$D$2:$D$6'],
       };
-      dataSheet.getCell(`K${r}`).dataValidation = {
+      dataSheet.getCell(`O${r}`).dataValidation = {
         type: 'list',
         allowBlank: true,
         formulae: ['"Green,Blue,Red"'],
@@ -416,6 +457,14 @@ export function validateCandidateRow(
     errors.push('Email is required');
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.push(`Email "${email}" has an invalid format`);
+  }
+
+  // Work Profile validation (if provided)
+  if (data.workProfile && String(data.workProfile).trim()) {
+    const wpCheck = validateCustomWorkProfile(String(data.workProfile));
+    if (!wpCheck.valid) {
+      errors.push(wpCheck.error || 'Invalid Work Profile');
+    }
   }
 
   // Numeric fields
