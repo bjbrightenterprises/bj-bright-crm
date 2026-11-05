@@ -112,7 +112,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       { header: 'Highest Education', key: 'education', width: 20 },
       { header: 'Source Channel', key: 'source', width: 20 },
       { header: 'Hiring Status', key: 'status', width: 20 },
-      { header: 'Position Applied For', key: 'jobTitle', width: 24 },
+      { header: 'Applied For', key: 'appliedFor', width: 28 },
       { header: 'Target Client', key: 'clientName', width: 24 },
       { header: 'Assigned Recruiter', key: 'assignedRecruiterName', width: 22 },
       { header: 'Expected Joining Date', key: 'expectedJoiningDate', width: 22 },
@@ -136,7 +136,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
       'B.Tech CS',
       'Naukri',
       'Screened',
-      'Lead Full Stack Engineer',
+      'Tele Sales Executive',
       'Corporate Client',
       'Praveen Verma',
       '2026-11-15',
@@ -148,7 +148,7 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
     // Format phone column as text explicitly
     dataSheet.getColumn(2).numFmt = '@';
 
-    // Dropdown validations (D=Work Profile, E=City, L=Source, M=Status)
+    // Dropdown validations (D=Work Profile, E=City, L=Source, M=Status, N=Applied For)
     const wpCount = Math.max(2, workProfiles.length + 1);
     for (let r = 2; r <= 50; r++) {
       dataSheet.getCell(`D${r}`).dataValidation = {
@@ -170,6 +170,11 @@ export async function generateImportTemplate(entityType: 'candidates' | 'clients
         type: 'list',
         allowBlank: true,
         formulae: ['Lists!$A$2:$A$10'],
+      };
+      dataSheet.getCell(`N${r}`).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [`Lists!$E$2:$E$${wpCount}`],
       };
     }
   } else if (entityType === 'clients') {

@@ -71,6 +71,8 @@ export interface Candidate {
   clientName?: string;
   workProfile?: string;
   workProfileIsCustom?: boolean;
+  appliedFor?: string;
+  appliedForIsCustom?: boolean;
   entryDate?: string; // ISO string converted from Firestore server timestamp
   enteredBy?: string; // Name of user who entered the candidate
   enteredByUserId?: string;

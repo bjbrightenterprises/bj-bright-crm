@@ -160,6 +160,7 @@ export function normalizeCandidateRecord(c: any): Candidate {
   return {
     ...c,
     status: normalizedStatus,
+    appliedFor: c.appliedFor !== undefined ? c.appliedFor : c.jobTitle || undefined,
     entryDate: resolvedEntryDate,
     enteredBy: c.enteredBy || c.assignedRecruiterName || 'Admin',
     ...(normalizedRemarks !== undefined ? { remarks: normalizedRemarks } : {}),

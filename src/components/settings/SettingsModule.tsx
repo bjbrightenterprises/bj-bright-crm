@@ -109,21 +109,36 @@ export const SettingsModule: React.FC = () => {
     companySettings.workProfileCategories
   );
 
-  // Compute custom profiles typed by users with counts
+  // Compute custom profiles typed by users with counts (from both Work Profile and Position / Job Applied For)
   const customTypedProfiles = React.useMemo(() => {
     const masterSet = new Set(
       getAllFlatWorkProfiles(workProfileCategories, true).map((p) =>
         p.name.toLowerCase().replace(/\s+/g, '')
       )
     );
+    masterSet.add('generaltalentpool/unassigned');
     const countsMap = new Map<string, number>();
     candidates.forEach((c) => {
       if (c.deletedAt) return;
       const wp = (c.workProfile || '').trim();
-      if (!wp || wp.toLowerCase() === 'other') return;
-      const norm = wp.toLowerCase().replace(/\s+/g, '');
-      if (c.workProfileIsCustom || !masterSet.has(norm)) {
-        countsMap.set(wp, (countsMap.get(wp) || 0) + 1);
+      if (wp && wp.toLowerCase() !== 'other') {
+        const normWp = wp.toLowerCase().replace(/\s+/g, '');
+        if (c.workProfileIsCustom || !masterSet.has(normWp)) {
+          countsMap.set(wp, (countsMap.get(wp) || 0) + 1);
+        }
+      }
+
+      const af = (c.appliedFor || '').trim();
+      if (
+        af &&
+        af.toLowerCase() !== 'other' &&
+        !c.jobId &&
+        af.toLowerCase() !== wp.toLowerCase()
+      ) {
+        const normAf = af.toLowerCase().replace(/\s+/g, '');
+        if (c.appliedForIsCustom || !masterSet.has(normAf)) {
+          countsMap.set(af, (countsMap.get(af) || 0) + 1);
+        }
       }
     });
     return Array.from(countsMap.entries())
@@ -278,19 +293,28 @@ export const SettingsModule: React.FC = () => {
       saveWorkProfileCategories(next);
     }
 
-    // Update matching candidates so workProfileIsCustom is false and normalized
+    // Update matching candidates so workProfileIsCustom and appliedForIsCustom are false and normalized
+    const targetNorm = formatted.toLowerCase().replace(/\s+/g, '');
+    const canonicalName = existing ? existing.name : formatted;
     candidates.forEach((c) => {
-      if (
-        (c.workProfile || '').toLowerCase().replace(/\s+/g, '') ===
-        formatted.toLowerCase().replace(/\s+/g, '')
-      ) {
+      const wpMatch =
+        (c.workProfile || '').toLowerCase().replace(/\s+/g, '') === targetNorm;
+      const afMatch =
+        (c.appliedFor || '').toLowerCase().replace(/\s+/g, '') === targetNorm;
+      if (wpMatch || afMatch) {
+        const updates: Record<string, any> = {};
+        if (wpMatch) {
+          updates.workProfile = canonicalName;
+          updates.workProfileIsCustom = false;
+        }
+        if (afMatch) {
+          updates.appliedFor = canonicalName;
+          updates.appliedForIsCustom = false;
+        }
         updateCandidate(
           c.id,
-          {
-            workProfile: existing ? existing.name : formatted,
-            workProfileIsCustom: false,
-          },
-          'Added custom work profile to master list'
+          updates,
+          'Added custom profile to master list'
         );
       }
     });

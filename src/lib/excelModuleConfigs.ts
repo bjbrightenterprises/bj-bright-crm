@@ -159,13 +159,17 @@ export const CANDIDATE_EXPORT_COLUMNS: ExportColumnDef[] = [
     getValue: (c: Candidate) => ((c.status as string) === 'Joined' ? 'Placed' : c.status),
   },
   {
-    key: 'jobTitle',
-    header: 'Position Applied',
-    description: 'Job opening title applied for',
-    allowedValues: 'Active job title or General Pool',
+    key: 'appliedFor',
+    header: 'Applied For',
+    description: 'Position or Job Applied For (open job opening, general talent pool, or job profile)',
+    allowedValues: 'Open job title, General Talent Pool / Unassigned, or master job profile',
     dataType: 'Text',
-    width: 25,
-    getValue: (c: Candidate) => c.jobTitle || 'General Pool',
+    width: 26,
+    validationList: [
+      'General Talent Pool / Unassigned',
+      ...getAllFlatWorkProfiles().map((p) => p.name),
+    ],
+    getValue: (c: Candidate) => c.appliedFor || c.jobTitle || 'General Talent Pool / Unassigned',
   },
   {
     key: 'clientName',

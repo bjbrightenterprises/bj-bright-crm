@@ -460,3 +460,51 @@ export function matchesEntryDateFilter(
 
   return true;
 }
+
+export const GENERAL_TALENT_POOL_LABEL = 'General Talent Pool / Unassigned';
+
+/**
+ * Formats an open Job Opening for the "Position / Job Applied For" dropdown as:
+ * "Profile - Company - Location - Salary per month"
+ * e.g. "HR Recruiter - BJ Bright Enterprises (Internal) - Noida - Rs 13,000 to 18,000"
+ */
+export function formatOpenJobDropdownLabel(job: {
+  title: string;
+  clientName: string;
+  location: string;
+  salaryMinLPA?: number;
+  salaryMaxLPA?: number;
+}): string {
+  const minMonthly = job.salaryMinLPA
+    ? Math.round((Number(job.salaryMinLPA) * 100000) / 12 / 100) * 100
+    : 0;
+  const maxMonthly = job.salaryMaxLPA
+    ? Math.round((Number(job.salaryMaxLPA) * 100000) / 12 / 100) * 100
+    : 0;
+
+  let salaryStr = '';
+  if (minMonthly > 0 && maxMonthly > minMonthly) {
+    salaryStr = `Rs ${minMonthly.toLocaleString('en-IN')} to ${maxMonthly.toLocaleString('en-IN')}`;
+  } else if (minMonthly > 0) {
+    salaryStr = `Rs ${minMonthly.toLocaleString('en-IN')} per month`;
+  } else if (maxMonthly > 0) {
+    salaryStr = `Rs ${maxMonthly.toLocaleString('en-IN')} per month`;
+  } else {
+    salaryStr = 'Salary negotiable';
+  }
+
+  return `${job.title} - ${job.clientName} - ${job.location} - ${salaryStr}`;
+}
+
+/**
+ * Returns the candidate's "Applied For" text (fallback to jobTitle for older records).
+ */
+export function getCandidateAppliedFor(c?: {
+  appliedFor?: string;
+  jobTitle?: string;
+} | null): string {
+  if (!c) return '';
+  const val = (c.appliedFor || c.jobTitle || '').trim();
+  return val;
+}
+

@@ -80,7 +80,7 @@ export const ExcelCsvImportModal: React.FC<ExcelCsvImportModalProps> = ({
     { key: 'education', label: 'Highest Education', example: 'B.Tech CS' },
     { key: 'source', label: 'Source Channel', example: 'Naukri' },
     { key: 'status', label: 'Hiring Status', example: 'Screened' },
-    { key: 'jobTitle', label: 'Position Applied For', example: 'Senior Frontend Engineer' },
+    { key: 'appliedFor', label: 'Applied For', example: 'Tele Sales Executive' },
     { key: 'clientName', label: 'Target Client', example: 'Tata Consultancy Services' },
     { key: 'assignedRecruiterName', label: 'Assigned Recruiter', example: 'Vikas Saxena' },
     { key: 'expectedJoiningDate', label: 'Expected Joining Date', example: '2026-11-15' },

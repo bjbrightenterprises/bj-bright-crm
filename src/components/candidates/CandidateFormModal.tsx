@@ -13,6 +13,7 @@ import {
   UserCheck,
   Briefcase,
   Edit3,
+  Copy,
 } from 'lucide-react';
 import {
   ensureWorkProfileCategories,
@@ -20,6 +21,8 @@ import {
   validateCustomWorkProfile,
   findMatchingExistingProfile,
   formatISTDateTime,
+  formatOpenJobDropdownLabel,
+  GENERAL_TALENT_POOL_LABEL,
 } from '../../lib/workProfiles';
 
 interface CandidateFormModalProps {
@@ -49,7 +52,6 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
   const [email, setEmail] = useState('');
   const [city, setCity] = useState('Noida');
   const [experienceYears, setExperienceYears] = useState<number>(3);
-  const [jobId, setJobId] = useState('');
   const [source, setSource] = useState<Candidate['source']>('Naukri');
 
   // Work Profile state
@@ -58,6 +60,17 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
   const [isWorkProfileDropdownOpen, setIsWorkProfileDropdownOpen] = useState(false);
   const [workProfileSearch, setWorkProfileSearch] = useState('');
   const workProfileDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Position / Job Applied For state
+  const [appliedForMode, setAppliedForMode] = useState<
+    'none' | 'job' | 'general' | 'profile' | 'other'
+  >('general');
+  const [selectedAppliedJobId, setSelectedAppliedJobId] = useState('');
+  const [selectedAppliedProfile, setSelectedAppliedProfile] = useState('');
+  const [customAppliedForInput, setCustomAppliedForInput] = useState('');
+  const [isAppliedForDropdownOpen, setIsAppliedForDropdownOpen] = useState(false);
+  const [appliedForSearch, setAppliedForSearch] = useState('');
+  const appliedForDropdownRef = useRef<HTMLDivElement>(null);
 
   // Entry Date & Entered By state (read-only for non-Admin; Admin can correct on Edit)
   const [nowPreviewIso, setNowPreviewIso] = useState<string>(() => new Date().toISOString());
@@ -102,6 +115,11 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
     [companySettings.workProfileCategories]
   );
 
+  const openJobs = useMemo(
+    () => jobs.filter((j) => j.status === 'Open' && !j.deletedAt),
+    [jobs]
+  );
+
   // Convert an ISO date string to YYYY-MM-DDTHH:mm in IST for datetime-local input
   const isoToISTDateTimeLocal = (isoStr?: string) => {
     const d = isoStr ? new Date(isoStr) : new Date();
@@ -128,6 +146,12 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       ) {
         setIsWorkProfileDropdownOpen(false);
       }
+      if (
+        appliedForDropdownRef.current &&
+        !appliedForDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsAppliedForDropdownOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
@@ -137,6 +161,8 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
     setNowPreviewIso(new Date().toISOString());
     setIsWorkProfileDropdownOpen(false);
     setWorkProfileSearch('');
+    setIsAppliedForDropdownOpen(false);
+    setAppliedForSearch('');
     setIsAdminEditingEntryMeta(false);
 
     if (candidateToEdit) {
@@ -153,7 +179,6 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       setSkills(candidateToEdit.skills || []);
       setAssignedRecruiterId(candidateToEdit.assignedRecruiterId);
       setStatus(candidateToEdit.status);
-      setJobId(candidateToEdit.jobId || '');
       setEditReason('');
       setShowMoreDetails(false);
 
@@ -169,6 +194,37 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       } else {
         setSelectedWorkProfile('');
         setCustomWorkProfileInput('');
+      }
+
+      const existingJobId = (candidateToEdit.jobId || '').trim();
+      const existingAf = (candidateToEdit.appliedFor || candidateToEdit.jobTitle || '').trim();
+      if (existingJobId && jobs.some((j) => j.id === existingJobId)) {
+        setAppliedForMode('job');
+        setSelectedAppliedJobId(existingJobId);
+        setSelectedAppliedProfile('');
+        setCustomAppliedForInput('');
+      } else if (existingAf) {
+        if (existingAf === GENERAL_TALENT_POOL_LABEL) {
+          setAppliedForMode('general');
+          setSelectedAppliedJobId('');
+          setSelectedAppliedProfile('');
+          setCustomAppliedForInput('');
+        } else if (candidateToEdit.appliedForIsCustom || !allMasterProfileNames.has(existingAf)) {
+          setAppliedForMode('other');
+          setSelectedAppliedJobId('');
+          setSelectedAppliedProfile('');
+          setCustomAppliedForInput(existingAf);
+        } else {
+          setAppliedForMode('profile');
+          setSelectedAppliedJobId('');
+          setSelectedAppliedProfile(existingAf);
+          setCustomAppliedForInput('');
+        }
+      } else {
+        setAppliedForMode('general');
+        setSelectedAppliedJobId('');
+        setSelectedAppliedProfile('');
+        setCustomAppliedForInput('');
       }
 
       const baseEntryIso = candidateToEdit.entryDate || candidateToEdit.createdAt;
@@ -189,9 +245,12 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       setSkills(['Communication']);
       setAssignedRecruiterId(currentUser.id);
       setStatus('New');
-      setJobId('');
       setSelectedWorkProfile('');
       setCustomWorkProfileInput('');
+      setAppliedForMode('general');
+      setSelectedAppliedJobId('');
+      setSelectedAppliedProfile('');
+      setCustomAppliedForInput('');
       setEditReason('');
       setShowMoreDetails(false);
       setAdminEntryDateTimeLocal(isoToISTDateTimeLocal(new Date().toISOString()));
@@ -202,7 +261,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
     setDuplicateMatch(null);
     setConfirmDuplicate(false);
     setSuccessMessage('');
-  }, [candidateToEdit, isOpen, currentUser, allMasterProfileNames]);
+  }, [candidateToEdit, isOpen, currentUser, allMasterProfileNames, jobs]);
 
   // Live duplicate check while typing mobile or email
   useEffect(() => {
@@ -222,7 +281,7 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
     }
   }, [phone, email, candidateToEdit, isOpen, checkDuplicate]);
 
-  // Filtered categories and profiles for searchable dropdown
+  // Filtered categories and profiles for Work Profile searchable dropdown
   const filteredCategories = useMemo(() => {
     const q = workProfileSearch.trim().toLowerCase();
     return activeCategories
@@ -241,6 +300,53 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       .filter((cat) => cat.profiles.length > 0 || cat.name.toLowerCase() === 'other');
   }, [activeCategories, workProfileSearch]);
 
+  // Filtered groups for Position / Job Applied For searchable dropdown
+  const filteredOpenJobsForApplied = useMemo(() => {
+    const q = appliedForSearch.trim().toLowerCase();
+    if (!q) return openJobs;
+    return openJobs.filter((j) => {
+      const label = formatOpenJobDropdownLabel(j).toLowerCase();
+      return (
+        label.includes(q) ||
+        j.title.toLowerCase().includes(q) ||
+        j.clientName.toLowerCase().includes(q) ||
+        j.location.toLowerCase().includes(q)
+      );
+    });
+  }, [openJobs, appliedForSearch]);
+
+  const showGeneralOptionInApplied = useMemo(() => {
+    const q = appliedForSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      GENERAL_TALENT_POOL_LABEL.toLowerCase().includes(q) ||
+      'general'.includes(q) ||
+      'talent pool'.includes(q) ||
+      'unassigned'.includes(q)
+    );
+  }, [appliedForSearch]);
+
+  const filteredAppliedProfileCategories = useMemo(() => {
+    const q = appliedForSearch.trim().toLowerCase();
+    return activeCategories
+      .filter((cat) => cat.name.toLowerCase() !== 'other')
+      .map((cat) => {
+        const activeProfiles = cat.profiles.filter(
+          (p) => p.active && p.name.toLowerCase() !== 'other'
+        );
+        if (!q) return { ...cat, profiles: activeProfiles };
+        const catMatches = cat.name.toLowerCase().includes(q);
+        const matchingProfiles = activeProfiles.filter(
+          (p) =>
+            catMatches ||
+            p.name.toLowerCase().includes(q) ||
+            p.name.toLowerCase().replace(/\s+/g, '').includes(q.replace(/\s+/g, ''))
+        );
+        return { ...cat, profiles: matchingProfiles };
+      })
+      .filter((cat) => cat.profiles.length > 0);
+  }, [activeCategories, appliedForSearch]);
+
   // Check if typed custom work profile matches an existing profile (ignoring case & spaces)
   const existingProfileMatch = useMemo(() => {
     if (selectedWorkProfile !== 'Other' || !customWorkProfileInput.trim()) return null;
@@ -249,6 +355,60 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       companySettings.workProfileCategories
     );
   }, [selectedWorkProfile, customWorkProfileInput, companySettings.workProfileCategories]);
+
+  // Check if typed custom Applied For matches an existing profile (ignoring case & spaces)
+  const existingAppliedProfileMatch = useMemo(() => {
+    if (appliedForMode !== 'other' || !customAppliedForInput.trim()) return null;
+    return findMatchingExistingProfile(
+      customAppliedForInput,
+      companySettings.workProfileCategories
+    );
+  }, [appliedForMode, customAppliedForInput, companySettings.workProfileCategories]);
+
+  const handleCopySameAsWorkProfile = () => {
+    if (!selectedWorkProfile) return;
+    if (selectedWorkProfile === 'Other') {
+      setAppliedForMode('other');
+      setSelectedAppliedJobId('');
+      setSelectedAppliedProfile('');
+      setCustomAppliedForInput(customWorkProfileInput);
+    } else {
+      setAppliedForMode('profile');
+      setSelectedAppliedJobId('');
+      setSelectedAppliedProfile(selectedWorkProfile);
+      setCustomAppliedForInput('');
+    }
+    setIsAppliedForDropdownOpen(false);
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.customAppliedFor;
+      return next;
+    });
+  };
+
+  const appliedForDisplayLabel = useMemo(() => {
+    if (appliedForMode === 'job' && selectedAppliedJobId) {
+      const job = jobs.find((j) => j.id === selectedAppliedJobId);
+      if (job) return formatOpenJobDropdownLabel(job);
+    }
+    if (appliedForMode === 'general') {
+      return GENERAL_TALENT_POOL_LABEL;
+    }
+    if (appliedForMode === 'profile' && selectedAppliedProfile) {
+      return selectedAppliedProfile;
+    }
+    if (appliedForMode === 'other') {
+      const formatted = validateCustomWorkProfile(customAppliedForInput).formatted;
+      return formatted ? `Other: ${formatted}` : 'Other (Type job applied for below)';
+    }
+    return 'Select or search Job Applied For...';
+  }, [
+    appliedForMode,
+    selectedAppliedJobId,
+    selectedAppliedProfile,
+    customAppliedForInput,
+    jobs,
+  ]);
 
   const handleAddSkill = () => {
     if (newSkillInput.trim() && !skills.includes(newSkillInput.trim())) {
@@ -290,6 +450,17 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
       }
     }
 
+    if (appliedForMode === 'other') {
+      const checkAf = validateCustomWorkProfile(customAppliedForInput);
+      if (!checkAf.valid) {
+        newErrors.customAppliedFor =
+          checkAf.error?.replace('work profile', 'job applied for').replace('Work profile', 'Job applied for') ||
+          'Please type the job applied for (2 to 60 characters).';
+      } else if (existingAppliedProfileMatch) {
+        newErrors.customAppliedFor = `"${existingAppliedProfileMatch.name}" already exists in the master list. Please click the suggestion below to use it.`;
+      }
+    }
+
     if (experienceYears < 0 || experienceYears > 40) {
       newErrors.experienceYears = 'Valid experience years required (0-40).';
     }
@@ -324,12 +495,39 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
     }
 
     const assignedRecruiter = users.find((u) => u.id === assignedRecruiterId);
-    const assignedJob = jobs.find((j) => j.id === jobId);
 
     const isCustomWp = selectedWorkProfile === 'Other';
     const finalWorkProfile = isCustomWp
       ? validateCustomWorkProfile(customWorkProfileInput).formatted
       : selectedWorkProfile;
+
+    let finalJobId: string | undefined;
+    let finalJobTitle: string | undefined;
+    let finalClientId: string | undefined;
+    let finalClientName: string | undefined;
+    let finalAppliedFor: string | undefined;
+    let finalAppliedForIsCustom = false;
+
+    if (appliedForMode === 'job' && selectedAppliedJobId) {
+      const assignedJob = jobs.find((j) => j.id === selectedAppliedJobId);
+      if (assignedJob) {
+        finalJobId = assignedJob.id;
+        finalJobTitle = assignedJob.title;
+        finalClientId = assignedJob.clientId;
+        finalClientName = assignedJob.clientName;
+        finalAppliedFor = assignedJob.title;
+        finalAppliedForIsCustom = false;
+      }
+    } else if (appliedForMode === 'general') {
+      finalAppliedFor = GENERAL_TALENT_POOL_LABEL;
+      finalAppliedForIsCustom = false;
+    } else if (appliedForMode === 'profile' && selectedAppliedProfile) {
+      finalAppliedFor = selectedAppliedProfile;
+      finalAppliedForIsCustom = false;
+    } else if (appliedForMode === 'other') {
+      finalAppliedFor = validateCustomWorkProfile(customAppliedForInput).formatted;
+      finalAppliedForIsCustom = true;
+    }
 
     if (candidateToEdit) {
       const finalReason = editReason.trim() || quickReasonOption;
@@ -344,16 +542,18 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
         experienceYears: Number(experienceYears) || 0,
         workProfile: finalWorkProfile,
         workProfileIsCustom: isCustomWp,
+        appliedFor: finalAppliedFor || '',
+        appliedForIsCustom: finalAppliedForIsCustom,
         skills,
         education: education.trim(),
         source,
         assignedRecruiterId,
         assignedRecruiterName: assignedRecruiter?.name || currentUser.name,
         status,
-        jobId: jobId || undefined,
-        jobTitle: assignedJob?.title || undefined,
-        clientId: assignedJob?.clientId || undefined,
-        clientName: assignedJob?.clientName || undefined,
+        jobId: finalJobId || '',
+        jobTitle: finalJobTitle || '',
+        clientId: finalClientId || '',
+        clientName: finalClientName || '',
       };
 
       if (currentUser.role === 'admin' && isAdminEditingEntryMeta) {
@@ -380,16 +580,18 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
         experienceYears: Number(experienceYears) || 0,
         workProfile: finalWorkProfile,
         workProfileIsCustom: isCustomWp,
+        appliedFor: finalAppliedFor,
+        appliedForIsCustom: finalAppliedForIsCustom,
         skills,
         education: education.trim(),
         source,
         assignedRecruiterId,
         assignedRecruiterName: assignedRecruiter?.name || currentUser.name,
         status: 'New',
-        jobId: jobId || undefined,
-        jobTitle: assignedJob?.title || undefined,
-        clientId: assignedJob?.clientId || undefined,
-        clientName: assignedJob?.clientName || undefined,
+        jobId: finalJobId,
+        jobTitle: finalJobTitle,
+        clientId: finalClientId,
+        clientName: finalClientName,
       });
 
       if (res.success) {
@@ -400,6 +602,10 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
           setEmail('');
           setSelectedWorkProfile('');
           setCustomWorkProfileInput('');
+          setAppliedForMode('general');
+          setSelectedAppliedJobId('');
+          setSelectedAppliedProfile('');
+          setCustomAppliedForInput('');
           setNowPreviewIso(new Date().toISOString());
           setTimeout(() => setSuccessMessage(''), 3000);
         } else {
@@ -811,25 +1017,275 @@ export const CandidateFormModal: React.FC<CandidateFormModalProps> = ({
             )}
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-800 mb-1">
-              Position / Job Applied For
-            </label>
-            <select
-              value={jobId}
-              onChange={(e) => setJobId(e.target.value)}
-              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
+          {/* Searchable Grouped Position / Job Applied For Dropdown */}
+          <div ref={appliedForDropdownRef} className="relative">
+            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+              <label className="block text-xs font-bold text-slate-800">
+                Position / Job Applied For
+              </label>
+              <button
+                type="button"
+                onClick={handleCopySameAsWorkProfile}
+                disabled={
+                  !selectedWorkProfile ||
+                  (selectedWorkProfile === 'Other' && !customWorkProfileInput.trim())
+                }
+                title="Copy the selected Work Profile into Position / Job Applied For"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 hover:bg-blue-100 disabled:opacity-45 disabled:cursor-not-allowed border border-blue-200 text-[#0B1F4B] text-[11px] font-bold transition-colors cursor-pointer"
+              >
+                <Copy className="w-3 h-3 shrink-0" />
+                <span>Same as Work Profile</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsAppliedForDropdownOpen((prev) => !prev)}
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-left text-sm flex items-center justify-between gap-2 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none cursor-pointer"
             >
-              <option value="">General Talent Pool / Unassigned</option>
-              {jobs
-                .filter((j) => j.status === 'Open')
-                .map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.title} — {j.clientName}
-                  </option>
-                ))}
-            </select>
+              <span
+                className={`truncate flex items-center gap-1.5 ${
+                  appliedForMode !== 'none' ? 'text-slate-900 font-semibold' : 'text-slate-400'
+                }`}
+              >
+                <Briefcase className="w-3.5 h-3.5 text-[#0B1F4B] shrink-0" />
+                <span className="truncate">{appliedForDisplayLabel}</span>
+              </span>
+              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+            </button>
+
+            {isAppliedForDropdownOpen && (
+              <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-300 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <div className="p-2 border-b border-slate-200 bg-slate-50">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      autoFocus
+                      value={appliedForSearch}
+                      onChange={(e) => setAppliedForSearch(e.target.value)}
+                      placeholder="Type to filter open jobs, profiles, or categories..."
+                      className="w-full min-h-[38px] pl-8 pr-7 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+                    />
+                    {appliedForSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setAppliedForSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                  {/* a) Open job openings */}
+                  {filteredOpenJobsForApplied.length > 0 && (
+                    <div className="py-1">
+                      <div className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-900 bg-emerald-50 border-b border-emerald-100 sticky top-0">
+                        Open job openings ({filteredOpenJobsForApplied.length})
+                      </div>
+                      {filteredOpenJobsForApplied.map((j) => {
+                        const isSelected =
+                          appliedForMode === 'job' && selectedAppliedJobId === j.id;
+                        const label = formatOpenJobDropdownLabel(j);
+                        return (
+                          <button
+                            key={j.id}
+                            type="button"
+                            onClick={() => {
+                              setAppliedForMode('job');
+                              setSelectedAppliedJobId(j.id);
+                              setSelectedAppliedProfile('');
+                              setIsAppliedForDropdownOpen(false);
+                              setAppliedForSearch('');
+                            }}
+                            className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer min-h-[42px] ${
+                              isSelected
+                                ? 'bg-[#0B1F4B] text-white font-bold'
+                                : 'text-slate-900 hover:bg-blue-50 font-semibold'
+                            }`}
+                          >
+                            <span className="leading-snug">{label}</span>
+                            {isSelected && (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-[#F5A623] shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* b) General */}
+                  {showGeneralOptionInApplied && (
+                    <div className="py-1">
+                      <div className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[#0B1F4B] bg-slate-100/90 sticky top-0">
+                        General
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAppliedForMode('general');
+                          setSelectedAppliedJobId('');
+                          setSelectedAppliedProfile('');
+                          setIsAppliedForDropdownOpen(false);
+                          setAppliedForSearch('');
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer min-h-[42px] ${
+                          appliedForMode === 'general'
+                            ? 'bg-[#0B1F4B] text-white font-bold'
+                            : 'text-slate-800 hover:bg-blue-50 font-medium'
+                        }`}
+                      >
+                        <span>{GENERAL_TALENT_POOL_LABEL}</span>
+                        {appliedForMode === 'general' && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#F5A623] shrink-0" />
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* c) All job profiles (grouped by category) */}
+                  {filteredAppliedProfileCategories.length > 0 && (
+                    <div className="py-1">
+                      <div className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[#0B1F4B] bg-blue-50/90 border-b border-blue-100 sticky top-0">
+                        All job profiles
+                      </div>
+                      {filteredAppliedProfileCategories.map((cat) => (
+                        <div key={`af_${cat.id}`} className="py-0.5">
+                          <div className="px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-50">
+                            {cat.name}
+                          </div>
+                          {cat.profiles.map((prof) => {
+                            const isSelected =
+                              appliedForMode === 'profile' &&
+                              selectedAppliedProfile === prof.name;
+                            return (
+                              <button
+                                key={`af_prof_${prof.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setAppliedForMode('profile');
+                                  setSelectedAppliedJobId('');
+                                  setSelectedAppliedProfile(prof.name);
+                                  setIsAppliedForDropdownOpen(false);
+                                  setAppliedForSearch('');
+                                }}
+                                className={`w-full text-left px-4 py-2.5 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer min-h-[40px] ${
+                                  isSelected
+                                    ? 'bg-[#0B1F4B] text-white font-bold'
+                                    : 'text-slate-800 hover:bg-blue-50 font-medium'
+                                }`}
+                              >
+                                <span>{prof.name}</span>
+                                {isSelected && (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-[#F5A623] shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* d) Other as the last option */}
+                  <div className="py-1">
+                    <div className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[#0B1F4B] bg-slate-100/90 sticky top-0">
+                      Other
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedForMode('other');
+                        setSelectedAppliedJobId('');
+                        setSelectedAppliedProfile('');
+                        setIsAppliedForDropdownOpen(false);
+                        setAppliedForSearch('');
+                      }}
+                      className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer min-h-[42px] ${
+                        appliedForMode === 'other'
+                          ? 'bg-[#0B1F4B] text-white font-bold'
+                          : 'text-slate-800 hover:bg-blue-50 font-medium'
+                      }`}
+                    >
+                      <span>Other</span>
+                      {appliedForMode === 'other' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#F5A623] shrink-0" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Conditional "Other" Custom Applied For Input */}
+          {appliedForMode === 'other' && (
+            <div className="sm:col-span-2 p-3.5 rounded-xl bg-amber-50/70 border border-amber-300 space-y-2">
+              <label className="block text-xs font-bold text-slate-900">
+                Type the job applied for <span className="text-rose-600">*</span>{' '}
+                <span className="text-[11px] font-normal text-slate-600">
+                  (2–60 chars, stored in Title Case)
+                </span>
+              </label>
+              <input
+                type="text"
+                required
+                minLength={2}
+                maxLength={60}
+                value={customAppliedForInput}
+                onChange={(e) => {
+                  setCustomAppliedForInput(e.target.value);
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.customAppliedFor;
+                    return next;
+                  });
+                }}
+                onBlur={() => {
+                  const v = validateCustomWorkProfile(customAppliedForInput);
+                  if (v.formatted) {
+                    setCustomAppliedForInput(v.formatted);
+                  }
+                }}
+                placeholder="e.g. Senior Export Documentation Executive"
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-[#0B1F4B] focus:outline-none"
+              />
+
+              {existingAppliedProfileMatch && (
+                <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-300 text-xs text-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="font-bold text-[#0B1F4B]">Existing profile found: </span>
+                    <span>
+                      "{existingAppliedProfileMatch.name}" ({existingAppliedProfileMatch.category})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppliedForMode('profile');
+                      setSelectedAppliedProfile(existingAppliedProfileMatch.name);
+                      setCustomAppliedForInput('');
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.customAppliedFor;
+                        return next;
+                      });
+                    }}
+                    className="min-h-[34px] px-3 py-1 rounded-lg bg-[#0B1F4B] hover:bg-[#163270] text-white font-bold text-xs shrink-0 cursor-pointer"
+                  >
+                    Use "{existingAppliedProfileMatch.name}"
+                  </button>
+                </div>
+              )}
+
+              {errors.customAppliedFor && (
+                <p className="text-xs text-rose-600 font-semibold">{errors.customAppliedFor}</p>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-bold text-slate-800 mb-1">Source</label>

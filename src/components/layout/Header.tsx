@@ -154,6 +154,8 @@ export const Header: React.FC<HeaderProps> = ({
               c.fullName.toLowerCase().includes(q) ||
               c.phone.includes(q) ||
               (c.workProfile && c.workProfile.toLowerCase().includes(q)) ||
+              (c.appliedFor && c.appliedFor.toLowerCase().includes(q)) ||
+              (c.jobTitle && c.jobTitle.toLowerCase().includes(q)) ||
               c.skills.some((s) => s.toLowerCase().includes(q)) ||
               c.city.toLowerCase().includes(q)
           )
@@ -302,6 +304,9 @@ export const Header: React.FC<HeaderProps> = ({
                       <div className="font-semibold text-slate-900">{c.fullName}</div>
                       <div className="text-[11px] text-slate-600">
                         {c.workProfile ? `${c.workProfile} • ` : ''}
+                        {c.appliedFor || c.jobTitle
+                          ? `Applied: ${c.appliedFor || c.jobTitle} • `
+                          : ''}
                         {c.skills.slice(0, 3).join(', ')} • {c.city}
                       </div>
                     </div>

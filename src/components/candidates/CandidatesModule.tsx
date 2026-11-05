@@ -37,6 +37,8 @@ import {
   formatISTDateTime,
   EntryDateFilterOption,
   matchesEntryDateFilter,
+  getCandidateAppliedFor,
+  GENERAL_TALENT_POOL_LABEL,
 } from '../../lib/workProfiles';
 
 interface CandidatesModuleProps {
@@ -53,6 +55,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     bulkAssignRecruiter,
     bulkDeleteCandidates,
     users,
+    jobs,
     companySettings,
     canCreateTasks,
     openStatusRemarkModal,
@@ -65,6 +68,11 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
   const [workProfileFilterSearch, setWorkProfileFilterSearch] = useState('');
   const [isWorkProfileFilterOpen, setIsWorkProfileFilterOpen] = useState(false);
   const workProfileFilterRef = useRef<HTMLDivElement>(null);
+
+  const [selectedAppliedFor, setSelectedAppliedFor] = useState<string[]>([]);
+  const [appliedForFilterSearch, setAppliedForFilterSearch] = useState('');
+  const [isAppliedForFilterOpen, setIsAppliedForFilterOpen] = useState(false);
+  const appliedForFilterRef = useRef<HTMLDivElement>(null);
 
   // Entry Date quick filter & Custom range
   const [entryDateFilter, setEntryDateFilter] = useState<EntryDateFilterOption>('All');
@@ -105,6 +113,12 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         !workProfileFilterRef.current.contains(e.target as Node)
       ) {
         setIsWorkProfileFilterOpen(false);
+      }
+      if (
+        appliedForFilterRef.current &&
+        !appliedForFilterRef.current.contains(e.target as Node)
+      ) {
+        setIsAppliedForFilterOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutside);
@@ -182,6 +196,78 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     workProfileFilterSearch,
   ]);
 
+  // Grouped Applied For options for multi-select filter
+  const filterAppliedForGroups = useMemo(() => {
+    const cats = ensureWorkProfileCategories(companySettings.workProfileCategories).filter(
+      (c) => c.active && c.name.toLowerCase() !== 'other'
+    );
+    const knownSet = new Set<string>([GENERAL_TALENT_POOL_LABEL]);
+    cats.forEach((c) =>
+      c.profiles.forEach((p) => {
+        if (p.active) knownSet.add(p.name);
+      })
+    );
+
+    const openJobTitles = Array.from(
+      new Set(
+        jobs
+          .filter((j) => j.status === 'Open' && !j.deletedAt)
+          .map((j) => j.title.trim())
+          .filter(Boolean)
+      )
+    );
+    openJobTitles.forEach((t) => knownSet.add(t));
+
+    const customInUse = new Set<string>();
+    visibleCandidates.forEach((cand) => {
+      const af = getCandidateAppliedFor(cand);
+      if (af && !knownSet.has(af)) {
+        customInUse.add(af);
+      }
+    });
+
+    const groups: Array<{ category: string; profiles: string[] }> = [];
+    if (openJobTitles.length > 0) {
+      groups.push({
+        category: 'Open Job Openings',
+        profiles: openJobTitles,
+      });
+    }
+    groups.push({
+      category: 'General',
+      profiles: [GENERAL_TALENT_POOL_LABEL],
+    });
+    cats.forEach((c) => {
+      groups.push({
+        category: c.name,
+        profiles: c.profiles.filter((p) => p.active).map((p) => p.name),
+      });
+    });
+    if (customInUse.size > 0) {
+      groups.push({
+        category: 'Custom / Other Applied For',
+        profiles: Array.from(customInUse).sort(),
+      });
+    }
+
+    const q = appliedForFilterSearch.trim().toLowerCase();
+    if (!q) return groups;
+    return groups
+      .map((g) => ({
+        category: g.category,
+        profiles: g.profiles.filter(
+          (p) =>
+            p.toLowerCase().includes(q) || g.category.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((g) => g.profiles.length > 0);
+  }, [
+    companySettings.workProfileCategories,
+    visibleCandidates,
+    jobs,
+    appliedForFilterSearch,
+  ]);
+
   // Unique cities in data
   const uniqueCities = useMemo(() => {
     const set = new Set<string>();
@@ -193,6 +279,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
 
   const activeFilterCount =
     (selectedWorkProfiles.length > 0 ? 1 : 0) +
+    (selectedAppliedFor.length > 0 ? 1 : 0) +
     (entryDateFilter !== 'All' ? 1 : 0) +
     (selectedSource !== 'All' ? 1 : 0) +
     (selectedCity !== 'All' ? 1 : 0) +
@@ -209,10 +296,20 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     setCurrentPage(1);
   };
 
+  const toggleAppliedForFilterItem = (appliedName: string) => {
+    setSelectedAppliedFor((prev) =>
+      prev.includes(appliedName)
+        ? prev.filter((p) => p !== appliedName)
+        : [...prev, appliedName]
+    );
+    setCurrentPage(1);
+  };
+
   // Filtered & Sorted Candidates
   const filteredCandidates = useMemo(() => {
     const filtered = visibleCandidates.filter((cand) => {
       const q = search.toLowerCase().trim();
+      const candAppliedFor = getCandidateAppliedFor(cand);
       const matchesSearch =
         !q ||
         cand.fullName.toLowerCase().includes(q) ||
@@ -220,6 +317,8 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
         cand.email.toLowerCase().includes(q) ||
         cand.currentCompany.toLowerCase().includes(q) ||
         (cand.workProfile && cand.workProfile.toLowerCase().includes(q)) ||
+        (candAppliedFor && candAppliedFor.toLowerCase().includes(q)) ||
+        (cand.clientName && cand.clientName.toLowerCase().includes(q)) ||
         (cand.enteredBy && cand.enteredBy.toLowerCase().includes(q)) ||
         cand.skills.some((s) => s.toLowerCase().includes(q)) ||
         (cand.remarks && cand.remarks.some((r) => r.text.toLowerCase().includes(q)));
@@ -230,6 +329,11 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       if (selectedWorkProfiles.length > 0) {
         const candWp = (cand.workProfile || '').trim();
         if (!candWp || !selectedWorkProfiles.includes(candWp)) return false;
+      }
+
+      if (selectedAppliedFor.length > 0) {
+        const effectiveAf = candAppliedFor || GENERAL_TALENT_POOL_LABEL;
+        if (!selectedAppliedFor.includes(effectiveAf)) return false;
       }
 
       if (
@@ -271,6 +375,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
     search,
     selectedStatus,
     selectedWorkProfiles,
+    selectedAppliedFor,
     entryDateFilter,
     customEntryFrom,
     customEntryTo,
@@ -352,6 +457,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       'Phone Number',
       'Email Address',
       'Work Profile',
+      'Applied For',
       'City',
       'Current Organization',
       'Current CTC LPA',
@@ -371,6 +477,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
       `"${c.phone}"`,
       `"${c.email}"`,
       `"${c.workProfile || ''}"`,
+      `"${getCandidateAppliedFor(c)}"`,
       `"${c.city}"`,
       `"${c.currentCompany}"`,
       c.currentSalaryLPA,
@@ -496,7 +603,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             <input
               type="search"
               inputMode="search"
-              placeholder="Search by name, phone (+91), email, work profile, skills, or company..."
+              placeholder="Search by name, phone (+91), email, work profile, applied for, skills, or company..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -507,7 +614,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
           </div>
 
           {/* Multi-select Work Profile Filter Dropdown */}
-          <div ref={workProfileFilterRef} className="relative sm:w-64">
+          <div ref={workProfileFilterRef} className="relative sm:w-56">
             <button
               type="button"
               onClick={() => setIsWorkProfileFilterOpen((prev) => !prev)}
@@ -594,6 +701,94 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             )}
           </div>
 
+          {/* Multi-select Applied For Filter Dropdown */}
+          <div ref={appliedForFilterRef} className="relative sm:w-56">
+            <button
+              type="button"
+              onClick={() => setIsAppliedForFilterOpen((prev) => !prev)}
+              className={`w-full min-h-[44px] px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                selectedAppliedFor.length > 0
+                  ? 'bg-emerald-50 border-emerald-700 text-emerald-900'
+                  : 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5 truncate">
+                <Briefcase className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="truncate">
+                  {selectedAppliedFor.length === 0
+                    ? 'Applied For: All'
+                    : selectedAppliedFor.length === 1
+                    ? selectedAppliedFor[0]
+                    : `${selectedAppliedFor.length} Applied For`}
+                </span>
+              </span>
+              <ChevronDown className="w-4 h-4 shrink-0 text-slate-500" />
+            </button>
+
+            {isAppliedForFilterOpen && (
+              <div className="absolute left-0 right-0 sm:w-80 mt-1.5 bg-white border border-slate-300 rounded-xl shadow-2xl z-40 overflow-hidden">
+                <div className="p-2 bg-slate-50 border-b border-slate-200 space-y-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={appliedForFilterSearch}
+                      onChange={(e) => setAppliedForFilterSearch(e.target.value)}
+                      placeholder="Filter applied for jobs/profiles..."
+                      className="w-full min-h-[34px] pl-8 pr-3 py-1 rounded-lg bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0B1F4B]"
+                    />
+                  </div>
+                  {selectedAppliedFor.length > 0 && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-emerald-900">
+                        {selectedAppliedFor.length} selected
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAppliedFor([]);
+                          setCurrentPage(1);
+                        }}
+                        className="text-rose-700 hover:underline font-bold cursor-pointer"
+                      >
+                        Clear selection
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
+                  {filterAppliedForGroups.map((group) => (
+                    <div key={`af_f_${group.category}`} className="py-1">
+                      <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#0B1F4B] bg-slate-100/80">
+                        {group.category}
+                      </div>
+                      {group.profiles.map((prof) => {
+                        const checked = selectedAppliedFor.includes(prof);
+                        return (
+                          <label
+                            key={`af_f_p_${prof}`}
+                            className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-slate-800 hover:bg-blue-50 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleAppliedForFilterItem(prof)}
+                              className="w-4 h-4 rounded border-slate-300 text-[#0B1F4B] accent-[#0B1F4B]"
+                            />
+                            <span className={checked ? 'font-bold text-[#0B1F4B]' : ''}>
+                              {prof}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
@@ -613,6 +808,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                   setSearch('');
                   setSelectedStatus('All');
                   setSelectedWorkProfiles([]);
+                  setSelectedAppliedFor([]);
                   setEntryDateFilter('All');
                   setCustomEntryFrom('');
                   setCustomEntryTo('');
@@ -924,9 +1120,14 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                         {cand.currentCompany} • {cand.experienceYears} Yrs
                       </p>
                       {cand.workProfile && (
-                        <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-[#0B1F4B] text-[11px] font-bold">
+                        <span className="inline-flex items-center gap-1 mt-1 mr-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-[#0B1F4B] text-[11px] font-bold">
                           <Briefcase className="w-3 h-3 text-[#F5A623]" />
                           <span>{cand.workProfile}</span>
+                        </span>
+                      )}
+                      {getCandidateAppliedFor(cand) && (
+                        <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] font-bold">
+                          <span>Applied: {getCandidateAppliedFor(cand)}</span>
                         </span>
                       )}
                     </div>
@@ -1084,6 +1285,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                 </th>
                 <th className="py-3.5 px-4 sticky-col-first">Candidate &amp; Exp</th>
                 <th className="py-3.5 px-4">Work Profile</th>
+                <th className="py-3.5 px-4">Applied For</th>
                 <th className="py-3.5 px-4">Contact Info</th>
                 <th className="py-3.5 px-4">Current Org &amp; City</th>
                 <th className="py-3.5 px-4">CTC (LPA)</th>
@@ -1111,7 +1313,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
             <tbody className="divide-y divide-slate-200">
               {paginatedCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="py-12 text-center text-slate-500">
+                  <td colSpan={14} className="py-12 text-center text-slate-500">
                     No candidates found matching the selected filter criteria.
                   </td>
                 </tr>
@@ -1122,6 +1324,7 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                   const whatsappUrl = `https://wa.me/${cleanPhone}?text=Hi%20${encodeURIComponent(
                     cand.fullName
                   )},%20this%20is%20from%20BJ%20Bright%20Enterprises%20Noida.`;
+                  const candAppliedFor = getCandidateAppliedFor(cand);
 
                   return (
                     <tr
@@ -1163,6 +1366,23 @@ export const CandidatesModule: React.FC<CandidatesModuleProps> = ({
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-[#0B1F4B] border border-blue-200 font-bold text-[11px]">
                             <span>{cand.workProfile}</span>
                           </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">-</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4">
+                        {candAppliedFor ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200 font-bold text-[11px]">
+                              <span>{candAppliedFor}</span>
+                            </span>
+                            {cand.clientName && (
+                              <div className="text-[10px] font-semibold text-blue-700 truncate max-w-[160px]">
+                                {cand.clientName}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-[11px] text-slate-400 italic">-</span>
                         )}

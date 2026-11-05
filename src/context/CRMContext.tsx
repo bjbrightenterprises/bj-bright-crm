@@ -29,6 +29,8 @@ import { auth, FIREBASE_CONFIG, FirebaseConfig } from '../lib/firebase';
 import {
   findMatchingExistingProfile,
   toTitleCaseWorkProfile,
+  formatOpenJobDropdownLabel,
+  GENERAL_TALENT_POOL_LABEL,
 } from '../lib/workProfiles';
 
 interface CRMContextType {
@@ -606,6 +608,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addCandidate = (c: Omit<Candidate, 'id' | 'createdAt' | 'updatedAt' | 'notes'>) => {
     const autoId = dataService.createAutoId('candidates');
     const nowIso = new Date().toISOString();
+    const resolvedAppliedFor = c.appliedFor
+      ? c.appliedFor.trim()
+      : c.jobTitle
+      ? c.jobTitle.trim()
+      : undefined;
     const newCand: Candidate = {
       ...c,
       id: autoId,
@@ -616,12 +623,45 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       enteredByUserId: currentUser.id,
       workProfile: c.workProfile ? c.workProfile.trim() : undefined,
       workProfileIsCustom: Boolean(c.workProfileIsCustom),
+      appliedFor: resolvedAppliedFor,
+      appliedForIsCustom: Boolean(c.appliedForIsCustom),
       notes: [],
       createdAt: nowIso,
       updatedAt: nowIso,
     };
     setCandidates((prev) => [newCand, ...prev]);
     dataService.createCandidateDoc(newCand).catch(() => {});
+
+    // Keep existing pipeline behaviour when an open job opening is picked
+    if (newCand.jobId) {
+      const linkedJob = jobs.find((j) => j.id === newCand.jobId);
+      if (linkedJob) {
+        const exists = pipeline.some((p) => p.candidateId === newCand.id && p.jobId === linkedJob.id);
+        if (!exists) {
+          const newItem: PipelineItem = {
+            id: dataService.createAutoId('pipeline'),
+            candidateId: newCand.id,
+            candidateName: newCand.fullName,
+            candidatePhone: newCand.phone,
+            candidateEmail: newCand.email,
+            candidateExp: newCand.experienceYears,
+            candidateSalary: newCand.expectedSalaryLPA,
+            candidateSkills: newCand.skills,
+            jobId: linkedJob.id,
+            jobTitle: linkedJob.title,
+            clientId: linkedJob.clientId,
+            clientName: linkedJob.clientName,
+            stage: 'Sourced',
+            assignedRecruiterId: newCand.assignedRecruiterId || currentUser.id,
+            updatedAt: nowIso,
+            lastMovedBy: currentUser.name,
+          };
+          setPipeline((prev) => [newItem, ...prev]);
+          dataService.createPipelineDoc(newItem).catch(() => {});
+        }
+      }
+    }
+
     logActivity('candidate', 'Candidate Added', `Added candidate ${newCand.fullName} (${newCand.phone})`);
     return { success: true, candidate: newCand };
   };
@@ -656,12 +696,44 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const updatedAt = new Date().toISOString();
+    const updatedCand: Candidate = { ...old, ...effectiveUpdates, updatedAt };
     setCandidates((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...effectiveUpdates, updatedAt } : c))
+      prev.map((c) => (c.id === id ? updatedCand : c))
     );
     dataService
       .updateCandidateDoc(id, { ...effectiveUpdates, updatedAt }, cleanReason, isAdminUser)
       .catch(() => {});
+
+    // Ensure pipeline item exists if newly linked to an open job opening
+    if (effectiveUpdates.jobId && effectiveUpdates.jobId !== old.jobId) {
+      const linkedJob = jobs.find((j) => j.id === effectiveUpdates.jobId);
+      if (linkedJob) {
+        const exists = pipeline.some((p) => p.candidateId === id && p.jobId === linkedJob.id);
+        if (!exists) {
+          const newItem: PipelineItem = {
+            id: dataService.createAutoId('pipeline'),
+            candidateId: updatedCand.id,
+            candidateName: updatedCand.fullName,
+            candidatePhone: updatedCand.phone,
+            candidateEmail: updatedCand.email,
+            candidateExp: updatedCand.experienceYears,
+            candidateSalary: updatedCand.expectedSalaryLPA,
+            candidateSkills: updatedCand.skills,
+            jobId: linkedJob.id,
+            jobTitle: linkedJob.title,
+            clientId: linkedJob.clientId,
+            clientName: linkedJob.clientName,
+            stage: 'Sourced',
+            assignedRecruiterId: updatedCand.assignedRecruiterId || currentUser.id,
+            updatedAt,
+            lastMovedBy: currentUser.name,
+          };
+          setPipeline((prev) => [newItem, ...prev]);
+          dataService.createPipelineDoc(newItem).catch(() => {});
+        }
+      }
+    }
+
     logActivity('candidate', 'Candidate Updated', `Updated profile for ${old.fullName}. Reason: ${cleanReason}`);
   };
 
@@ -932,6 +1004,45 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
+      const rawAppliedFor = (r.data.appliedFor || r.data.jobTitle || '').trim();
+      let resolvedAppliedFor: string | undefined;
+      let resolvedAppliedForIsCustom: boolean | undefined;
+      let matchedOpenJob: JobOpening | undefined;
+
+      if (rawAppliedFor) {
+        const openJobsList = jobs.filter((j) => j.status === 'Open' && !j.deletedAt);
+        matchedOpenJob = openJobsList.find(
+          (j) =>
+            formatOpenJobDropdownLabel(j).toLowerCase() === rawAppliedFor.toLowerCase() ||
+            (j.title.toLowerCase() === rawAppliedFor.toLowerCase() &&
+              (!r.data.clientName ||
+                j.clientName.toLowerCase() === String(r.data.clientName).trim().toLowerCase()))
+        );
+
+        if (matchedOpenJob) {
+          resolvedAppliedFor = matchedOpenJob.title;
+          resolvedAppliedForIsCustom = false;
+        } else if (
+          rawAppliedFor.toLowerCase().replace(/\s+/g, '') ===
+          GENERAL_TALENT_POOL_LABEL.toLowerCase().replace(/\s+/g, '')
+        ) {
+          resolvedAppliedFor = GENERAL_TALENT_POOL_LABEL;
+          resolvedAppliedForIsCustom = false;
+        } else {
+          const existingMatch = findMatchingExistingProfile(
+            rawAppliedFor,
+            companySettings.workProfileCategories
+          );
+          if (existingMatch) {
+            resolvedAppliedFor = existingMatch.name;
+            resolvedAppliedForIsCustom = false;
+          } else {
+            resolvedAppliedFor = toTitleCaseWorkProfile(rawAppliedFor);
+            resolvedAppliedForIsCustom = true;
+          }
+        }
+      }
+
       if (r.isUpdate && r.existingId) {
         const updatePayload: Partial<Candidate> = { ...r.data };
         delete updatePayload.entryDate;
@@ -940,6 +1051,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (resolvedWorkProfile) {
           updatePayload.workProfile = resolvedWorkProfile;
           updatePayload.workProfileIsCustom = resolvedIsCustom;
+        }
+        if (resolvedAppliedFor !== undefined) {
+          updatePayload.appliedFor = resolvedAppliedFor;
+          updatePayload.appliedForIsCustom = resolvedAppliedForIsCustom;
+          if (matchedOpenJob) {
+            updatePayload.jobId = matchedOpenJob.id;
+            updatePayload.jobTitle = matchedOpenJob.title;
+            updatePayload.clientId = matchedOpenJob.clientId;
+            updatePayload.clientName = matchedOpenJob.clientName;
+          }
         }
         updateCandidate(r.existingId, updatePayload, updateReason);
         updated++;
@@ -979,8 +1100,12 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ((r.data.status as string) === 'Joined' ? 'Placed' : (r.data.status as any)) || 'New',
           workProfile: resolvedWorkProfile,
           workProfileIsCustom: resolvedIsCustom,
-          jobTitle: r.data.jobTitle,
-          clientName: r.data.clientName,
+          appliedFor: resolvedAppliedFor,
+          appliedForIsCustom: resolvedAppliedForIsCustom,
+          jobId: matchedOpenJob ? matchedOpenJob.id : undefined,
+          jobTitle: matchedOpenJob ? matchedOpenJob.title : undefined,
+          clientId: matchedOpenJob ? matchedOpenJob.clientId : undefined,
+          clientName: matchedOpenJob ? matchedOpenJob.clientName : r.data.clientName,
           expectedJoiningDate: r.data.expectedJoiningDate,
         });
         added++;
